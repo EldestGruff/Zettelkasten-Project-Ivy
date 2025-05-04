@@ -1,10 +1,29 @@
 # backend/main.py
-from fastapi import FastAPI, Depends # Add Depends
-from sqlalchemy.orm import Session # Import Session type
+import sys
+import os
+import pathlib # Using pathlib for more robust path handling
+
+# --- Add project root's PARENT to sys.path ---
+# Get the directory containing this file (backend/)
+backend_dir = pathlib.Path(__file__).resolve().parent
+# Get the parent directory (zettelkasten-project/) which contains the 'backend' package
+project_root_parent = backend_dir.parent
+# Add the directory *containing* 'backend' to the Python path
+if str(project_root_parent) not in sys.path:
+    sys.path.insert(0, str(project_root_parent))
+    print(f"--- Added to sys.path: {project_root_parent} ---") # Debug print
+# ------------------------------------
+
+from fastapi import FastAPI, Depends
+from sqlalchemy.orm import Session
 from sqlalchemy import text
 
-from app.core.config import settings # Import settings
-from app.api.deps import get_db, DbSession # Import dependency and type alias
+# Keep original 'app.' imports - Python should now find 'backend' in sys.path
+# and then look for 'app' within it.
+from app.core.config import settings
+from app.api.deps import get_db, DbSession
+from app.api.routers import tags
+from app.api.routers import notes
 
 # Create an instance of the FastAPI class
 app = FastAPI(
@@ -12,6 +31,10 @@ app = FastAPI(
     version="0.1.0" # You could also load version from settings
     # Add other FastAPI options like description, openapi_url etc. if needed
 )
+
+# This makes all routes defined in tags.router available under the /tags prefix
+app.include_router(tags.router)
+app.include_router(notes.router)
 
 @app.get("/")
 async def read_root():

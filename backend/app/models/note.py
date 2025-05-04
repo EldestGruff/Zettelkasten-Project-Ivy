@@ -52,7 +52,7 @@ class Note(Base):
         "Tag", # Forward reference using string
         secondary="note_tags", # Name of the association table
         back_populates="notes",
-        cascade="all, delete-orphan" # Matches SQL ON DELETE CASCADE behavior
+        cascade="all, delete" # Matches SQL ON DELETE CASCADE behavior
     )
 
     # One-to-Many relationship for links originating *from* this note
