@@ -1,0 +1,27 @@
+# Environments
+.venv/
+*.env
+.env.*
+env/
+venv/
+
+# Python cache files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# IDE / Editor specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Other
+.DS_Store

@@ -1,0 +1,96 @@
+# ~/zettelkasten-project/docker-compose.yml
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: zettelkasten-postgres
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      TZ: ${TZ}
+      PGTZ: ${TZ}
+    volumes:
+      # Use Docker named volumes for persistence on Ivy's filesystem
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      # Map the port defined in .env (default 5432) ONLY to localhost on Ivy
+      # Allows direct connection from tools on Ivy if needed, but not the wider network
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    networks:
+      - zettelkasten_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging: # Optional: Configure logging driver and limits
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: zettelkasten-qdrant
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ}
+      # QDRANT__LOG_LEVEL: DEBUG # Uncomment for more detailed logs if needed
+    volumes:
+      # Use Docker named volumes for persistence on Ivy's filesystem
+      - qdrant_data:/qdrant/storage
+    ports:
+      # Map Qdrant's REST API port ONLY to localhost on Ivy
+      - "127.0.0.1:${QDRANT_PORT:-6333}:6333"
+      # - "127.0.0.1:6334:6334" # gRPC port if needed
+    networks:
+      - zettelkasten_net
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # --- Backend Service Placeholder ---
+  # We will add our FastAPI backend service definition here later
+  # backend:
+  #   build: ./backend # Assuming backend code is in a 'backend' subdir
+  #   container_name: zettelkasten-backend
+  #   restart: unless-stopped
+  #   env_file: .env
+  #   environment:
+  #     DATABASE_URL: "postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}"
+  #     QDRANT_HOST: "qdrant"
+  #     QDRANT_PORT: "6333" # Internal port, matching qdrant service
+  #     OLLAMA_API_BASE_URL: ${OLLAMA_API_BASE_URL}
+  #     TZ: ${TZ}
+  #   ports:
+  #     - "127.0.0.1:8000:8000" # Map backend API port to localhost on Ivy
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy # Wait for postgres healthcheck
+  #     qdrant:
+  #       condition: service_started # Qdrant doesn't have a simple healthcheck command easily callable here
+  #   volumes:
+  #     - ./backend:/app # Mount code for development (optional)
+  #   networks:
+  #     - zettelkasten_net
+  #   logging:
+  #     driver: "json-file"
+  #     options:
+  #       max-size: "10m"
+  #       max-file: "3"
+
+# Define Docker volumes (will be stored under Docker's default path on Ivy, e.g., /var/lib/docker/volumes)
+volumes:
+  postgres_data:
+  qdrant_data:
+
+# Define the custom network
+networks:
+  zettelkasten_net:
+    driver: bridge
