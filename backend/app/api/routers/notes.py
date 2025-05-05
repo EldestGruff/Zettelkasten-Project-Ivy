@@ -207,7 +207,270 @@ async def delete_note_permanently_endpoint(
 
 
 # --- Future endpoints for managing tags/links on notes ---
-# POST /{note_id}/tags/{tag_id}
-# DELETE /{note_id}/tags/{tag_id}
+# backend/app/api/routers/notes.py
+# ... (other imports) ...
+from app.schemas import TagRead # Need TagRead for response model
+
+# ... (router definition) ...
+
+# ... (existing Note CRUD endpoints) ...
+
+
+# --- Note-Tag Association Endpoints ---
+
+@router.post(
+    "/{note_id}/tags/{tag_id}",
+    response_model=NoteRead, # Return the updated note with its tags
+    tags=["Notes", "Tags"] # Add to Tags group as well? Optional.
+)
+async def add_tag_to_note_endpoint(
+    note_id: uuid.UUID,
+    tag_id: int,
+    db: DbSession
+):
+    """
+    Associate an existing tag with an existing note.
+    """
+    # Get the note (must be active to modify?)
+    db_note = crud.note.get_note(db, note_id=note_id)
+    if db_note is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Active note with ID {note_id} not found.",
+        )
+
+    # Get the tag
+    db_tag = crud.tag.get_tag(db, tag_id=tag_id)
+    if db_tag is None:
+         raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Tag with ID {tag_id} not found.",
+        )
+
+    # Check if already associated (optional, CRUD handles it but good for clear API response)
+    if db_tag in db_note.tags:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Tag {tag_id} ('{db_tag.name}') is already associated with note {note_id}.",
+        )
+
+    # Call the CRUD function
+    updated_note = crud.note.add_tag_to_note(db=db, db_note=db_note, db_tag=db_tag)
+    # Need to ensure tags are loaded for the response model serialization
+    # This might require relationship loading strategies or explicit refresh logic
+    # For now, let's assume FastAPI's serialization handles it (may need optimization)
+    return updated_note
+
+
+@router.delete(
+    "/{note_id}/tags/{tag_id}",
+    response_model=NoteRead, # Return the updated note
+    # Or return status code 204 No Content if preferred
+    # status_code=status.HTTP_204_NO_CONTENT
+)
+async def remove_tag_from_note_endpoint(
+    note_id: uuid.UUID,
+    tag_id: int,
+    db: DbSession
+):
+    """
+    Disassociate a tag from a note.
+    """
+    # Get the note
+    db_note = crud.note.get_note(db, note_id=note_id)
+    if db_note is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Active note with ID {note_id} not found.",
+        )
+
+    # Get the tag
+    db_tag = crud.tag.get_tag(db, tag_id=tag_id)
+    if db_tag is None:
+         raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Tag with ID {tag_id} not found.",
+        )
+
+    # Check if association exists before trying to remove
+    if db_tag not in db_note.tags:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, # Or 400 Bad Request
+            detail=f"Tag {tag_id} ('{db_tag.name}') is not associated with note {note_id}.",
+        )
+
+    # Call the CRUD function
+    updated_note = crud.note.remove_tag_from_note(db=db, db_note=db_note, db_tag=db_tag)
+    # if status_code == 204: return None # If using 204 response
+    return updated_note
+
+# (Optional) Endpoint to get tags for a specific note
+@router.get("/{note_id}/tags", response_model=List[TagRead])
+async def get_tags_for_note_endpoint(
+    note_id: uuid.UUID,
+    db: DbSession
+):
+    """
+    Retrieve all tags associated with a specific note.
+    """
+    db_note = crud.note.get_note(db, note_id=note_id)
+    if db_note is None:
+         raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Active note with ID {note_id} not found.",
+        )
+    # Access the relationship directly. FastAPI serializes based on TagRead.
+    return db_note.tags
+
 # POST /{note_id}/links/{target_note_id}
 # DELETE /{note_id}/links/{link_id}
+
+# --- Note-to-Note Linking Endpoints ---
+
+@router.post(
+    "/{source_note_id}/links/{target_note_id}",
+    # response_model=LinkRead, # If we had a LinkRead schema
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a link from source note to target note",
+    # Can return the created Link object if we have a schema, or just success/failure
+    # For now, let's return No Content on success to keep it simple
+    response_description="Link created successfully (No content)",
+    responses={
+        201: {"description": "Link created successfully."},
+        404: {"description": "Source or Target Note not found."},
+        400: {"description": "Cannot link a note to itself."},
+        409: {"description": "Link already exists."}, # If create_link raises specific error
+    }
+)
+async def create_note_link_endpoint(
+    source_note_id: uuid.UUID,
+    target_note_id: uuid.UUID,
+    # body: LinkCreate = None, # Optional: If accepting link_type in body
+    db: DbSession
+):
+    """
+    Create a directed link from a source note to a target note.
+    """
+    # Verify both notes exist (and are active?)
+    source_note = crud.note.get_note(db, note_id=source_note_id)
+    if source_note is None:
+         raise HTTPException(status_code=404, detail=f"Source note {source_note_id} not found.")
+    target_note = crud.note.get_note(db, note_id=target_note_id)
+    if target_note is None:
+         raise HTTPException(status_code=404, detail=f"Target note {target_note_id} not found.")
+
+# --- Check for existing link BEFORE calling create ---
+    existing_link_stmt = select(Link).where(
+        Link.source_note_id == source_note_id,
+        Link.target_note_id == target_note_id
+    )
+    existing_link = db.execute(existing_link_stmt).scalar_one_or_none()
+    if existing_link:
+        # Link already exists, return 409 Conflict
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Link from {source_note_id} to {target_note_id} already exists (ID: {existing_link.id})."
+        )
+    # --- End Check ---
+
+    # link_type = body.link_type if body else None # Extract type if using body
+    try:
+        # Call CRUD function to create the link
+        link = crud.link.create_link(
+            db=db,
+            source_note_id=source_note_id,
+            target_note_id=target_note_id,
+            # link_type=link_type
+        )
+        # If create_link returns the existing link on duplicate, we might get 200 OK instead
+        # For simplicity, let's assume it raises an error or we handle it distinctly
+        # Return 201 on successful creation
+        # Return the Link object if using response_model=LinkRead
+        # return link
+        # Returning None results in 204 No Content if status_code is 204, otherwise 200 OK with null body
+        # Explicitly return status for clarity if not using response_model
+        # Since status_code=201, return None is okay, but let's return something minimal
+        return {"detail": "Link created", "link_id": link.id} # Example minimal response
+
+    except ValueError as e: # Catch self-linking error from CRUD
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e: # Catch potential IntegrityError etc.
+        db.rollback()
+         # Check if it failed because it already exists (more robust check needed in CRUD)
+        existing_link = db.execute(select(Link).where(Link.source_note_id == source_note_id, Link.target_note_id == target_note_id)).scalar_one_or_none()
+        if existing_link:
+             raise HTTPException(status_code=409, detail="Link already exists.")
+        else:
+            print(f"ERROR creating link: {e}")
+            raise HTTPException(status_code=500, detail="Failed to create link: {e}")
+
+
+@router.delete(
+    "/{source_note_id}/links/{target_note_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete the link from source note to target note"
+)
+async def delete_note_link_endpoint(
+    source_note_id: uuid.UUID,
+    target_note_id: uuid.UUID,
+    db: DbSession
+):
+    """
+    Delete the specific directed link from source note to target note.
+    """
+    deleted = crud.link.delete_link(
+        db=db,
+        source_note_id=source_note_id,
+        target_note_id=target_note_id
+    )
+    if not deleted:
+        # Idempotency: If link doesn't exist, is it an error or success?
+        # Returning 404 is common if the specific resource to delete isn't found.
+         raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Link from {source_note_id} to {target_note_id} not found."
+        )
+    # Return No Content on successful deletion
+    return None
+
+
+@router.get(
+    "/{note_id}/links/outgoing",
+    response_model=List[NoteReadMinimal], # Return minimal info about target notes
+    summary="Get notes linked FROM this note"
+)
+async def get_outgoing_links_endpoint(
+    note_id: uuid.UUID,
+    db: DbSession
+):
+    """
+    Retrieve a list of active notes that the specified note links **to**.
+    """
+    # Verify the source note exists and is active
+    source_note = crud.note.get_note(db, note_id=note_id)
+    if source_note is None:
+         raise HTTPException(status_code=404, detail=f"Source note {note_id} not found.")
+
+    target_notes = crud.link.get_outgoing_linked_notes(db=db, source_note_id=note_id)
+    return target_notes
+
+
+@router.get(
+    "/{note_id}/links/incoming",
+    response_model=List[NoteReadMinimal], # Return minimal info about source notes
+    summary="Get notes linking TO this note (backlinks)"
+)
+async def get_incoming_links_endpoint(
+    note_id: uuid.UUID,
+    db: DbSession
+):
+    """
+    Retrieve a list of active notes that link **to** the specified note (backlinks).
+    """
+     # Verify the target note exists and is active
+    target_note = crud.note.get_note(db, note_id=note_id)
+    if target_note is None:
+         raise HTTPException(status_code=404, detail=f"Target note {note_id} not found.")
+
+    source_notes = crud.link.get_incoming_linked_notes(db=db, target_note_id=note_id)
+    return source_notes
