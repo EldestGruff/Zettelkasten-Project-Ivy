@@ -7,6 +7,7 @@ from sqlalchemy import select, update, delete # Import update/delete for specifi
 
 # Import models and schemas
 from app.models.note import Note
+from app.models.tag import Tag
 from app.models.enums import MemoryTypeEnum # Maybe needed for filtering
 from app.schemas.note import NoteCreate, NoteUpdate
 
@@ -102,7 +103,49 @@ def remove_note_permanently(db: Session, *, note_id: uuid.UUID) -> Optional[Note
     return None
 
 # --- Future: Functions for adding/removing tags/links ---
-# def add_tag_to_note(...)
-# def remove_tag_from_note(...)
+# --- Note-Tag Relationship Management ---
+
+def add_tag_to_note(db: Session, *, db_note: Note, db_tag: Tag) -> Note:
+    """
+    Associate an existing tag with an existing note.
+
+    Args:
+        db: The database session.
+        db_note: The Note SQLAlchemy object.
+        db_tag: The Tag SQLAlchemy object.
+
+    Returns:
+        The updated Note SQLAlchemy object.
+    """
+    # Check if association already exists (optional, prevents duplicate adds)
+    if db_tag not in db_note.tags:
+        db_note.tags.append(db_tag) # Modify the relationship collection
+        db.add(db_note)
+        db.commit()
+        db.refresh(db_note)
+    return db_note
+
+def remove_tag_from_note(db: Session, *, db_note: Note, db_tag: Tag) -> Note:
+    """
+    Disassociate a tag from a note.
+
+    Args:
+        db: The database session.
+        db_note: The Note SQLAlchemy object.
+        db_tag: The Tag SQLAlchemy object to remove.
+
+    Returns:
+        The updated Note SQLAlchemy object.
+    """
+    # Check if association exists before trying to remove
+    if db_tag in db_note.tags:
+        db_note.tags.remove(db_tag) # Modify the relationship collection
+        db.add(db_note)
+        db.commit()
+        db.refresh(db_note)
+    return db_note
+
+
+
 # def link_notes(...)
 # def unlink_notes(...)

@@ -9,10 +9,20 @@ from .crud_note import ( # Add Note CRUD functions
     archive_note,
     unarchive_note,
     remove_note_permanently,
+    add_tag_to_note,   
+    remove_tag_from_note,
+)
+from .crud_link import ( # Add Link CRUD functions
+    create_link,
+    delete_link,
+    delete_link_by_id,
+    get_outgoing_linked_notes,
+    get_incoming_linked_notes,
 )
 
 # Import modules for namespacing
 from . import crud_tag as tag
 from . import crud_note as note # Add note module
+from . import crud_link as link
 
 # Import others as needed

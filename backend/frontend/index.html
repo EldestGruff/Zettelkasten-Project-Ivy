@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ivy - Second Brain</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <style>
+        /* Basic inline styles - move to styles.css later */
+        body { font-family: sans-serif; margin: 2em; background-color: #f4f4f4; display: flex; gap: 2em;}
+        #sidebar { width: 30%; max-width: 400px; }
+        #main-view { flex-grow: 1; }
+        #notes-list { list-style: none; padding: 0; max-height: 70vh; overflow-y: auto; border: 1px solid #ccc; background-color: #fff; padding: 0.5em; }
+        #notes-list li { margin-bottom: 0.5em; padding: 0.5em; border-radius: 3px; cursor: pointer; border: 1px solid transparent; }
+        #notes-list li:hover { background-color: #eee; }
+        #notes-list li.active { border-color: #007bff; background-color: #e7f3ff; }
+        #note-detail, #note-edit-form-container, #note-create-form-container { background-color: #fff; padding: 1.5em; border-radius: 5px; margin-top: 1em; }
+        #note-content-display { white-space: pre-wrap; background-color: #f9f9f9; padding: 1em; border: 1px solid #ddd; min-height: 100px; }
+        .tag-list span { background-color: #e0e0e0; padding: 0.2em 0.5em; border-radius: 3px; margin-right: 0.5em; display: inline-block; }
+        .tag-list button { margin-left: 5px; cursor: pointer; border: none; background: #ffaaaa; color: #a00; border-radius: 50%; font-size: 0.7em; width: 16px; height: 16px; line-height: 1; padding: 0; }
+        .link-list ul { list-style: none; padding-left: 0; }
+        .link-list li { margin-bottom: 0.3em; }
+        .link-list a { text-decoration: none; color: #007bff; cursor: pointer; }
+        .link-list a:hover { text-decoration: underline; }
+        .hidden { display: none; }
+        textarea { width: 95%; min-height: 150px; }
+        label { display: block; margin-bottom: 0.3em; font-weight: bold; }
+        input[type="text"], select, textarea { margin-bottom: 1em; padding: 0.5em; border: 1px solid #ccc; border-radius: 3px; }
+        button { padding: 0.6em 1em; background-color: #007bff; color: white; border: none; border-radius: 3px; cursor: pointer; margin-right: 0.5em; }
+        button:hover { background-color: #0056b3; }
+        button.secondary { background-color: #6c757d; }
+        button.secondary:hover { background-color: #5a6268; }
+        button.danger { background-color: #dc3545; }
+        button.danger:hover { background-color: #c82333; }
+        .button-group { margin-top: 1em; }
+        .error-message { color: red; font-size: 0.9em; margin-top: 1em; }
+    </style>
+</head>
+<body>
+
+    <!-- Sidebar for Notes List and Creation -->
+    <div id="sidebar">
+        <h2>Notes</h2>
+        <ul id="notes-list">
+            <li>Loading notes...</li>
+        </ul>
+        <div class="button-group">
+            <button id="show-create-form-btn">Create New Note</button>
+        </div>
+
+        <!-- Create Note Form (Initially Hidden) -->
+        <div id="note-create-form-container" class="hidden">
+            <h3>Create New Note</h3>
+            <form id="note-create-form">
+                <div>
+                    <label for="create-content">Content:</label>
+                    <textarea id="create-content" required></textarea>
+                </div>
+                <div>
+                    <label for="create-memory-type">Memory Type:</label>
+                    <select id="create-memory-type">
+                        <option value="uncategorized">Uncategorized</option>
+                        <option value="semantic">Semantic</option>
+                        <option value="episodic">Episodic</option>
+                        <option value="procedural">Procedural</option>
+                    </select>
+                </div>
+                <div class="button-group">
+                    <button type="submit">Save Note</button>
+                    <button type="button" id="cancel-create-btn" class="secondary">Cancel</button>
+                </div>
+                 <div id="create-error" class="error-message hidden"></div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Main View Area for Details and Editing -->
+    <div id="main-view">
+        <h2>Note Detail</h2>
+
+        <!-- Note Detail Display (Initially Hidden) -->
+        <div id="note-detail" class="hidden">
+            <h3 id="note-title"></h3> <!-- We might use ID or first line as title -->
+            <div class="button-group">
+                 <button id="edit-note-btn">Edit</button>
+                 <button id="archive-note-btn" class="secondary">Archive</button> <!-- TODO: Implement Archive -->
+                 <button id="delete-note-btn" class="danger">Delete</button> <!-- TODO: Implement Delete (Permanent) -->
+            </div>
+            <hr>
+            <label>Content:</label>
+            <div id="note-content-display"></div>
+            <p><strong>Type:</strong> <span id="note-memory-type"></span></p>
+            <p><strong>Archived:</strong> <span id="note-archived"></span></p>
+            <div>
+                <strong>Tags:</strong>
+                <span id="note-tags" class="tag-list"></span>
+                <!-- TODO: Add UI for adding tags -->
+                <!-- <input type="text" id="add-tag-input" placeholder="Tag ID or Name">
+                <button id="add-tag-btn">Add Tag</button> -->
+            </div>
+            <div>
+                <strong>Tags:</strong>
+                <span id="note-tags" class="tag-list"></span>
+                <!-- Add UI for adding tags -->
+                <div style="margin-top: 0.5em;"> <!-- Simple container -->
+                    <input type="text" id="add-tag-input" placeholder="Existing Tag ID or Name" size="20" style="margin-bottom: 0;">
+                    <button id="add-tag-btn" class="secondary" style="padding: 0.4em 0.8em;">Add Tag</button>
+                    <span id="add-tag-error" class="error-message hidden" style="margin-left: 1em;"></span>
+                </div>
+            </div>
+
+            <!-- Add UI for creating links -->
+             <div style="margin-top: 1em;">
+                 <strong>Link to Note:</strong>
+                 <div>
+                     <input type="text" id="link-target-note-id" placeholder="Target Note ID (UUID)" size="40" style="margin-bottom: 0;">
+                     <button id="create-link-btn" class="secondary" style="padding: 0.4em 0.8em;">Create Link</button>
+                     <span id="create-link-error" class="error-message hidden" style="margin-left: 1em;"></span>
+                 </div>
+             </div>
+            <div class="link-list">
+                <strong>Links To (Outgoing):</strong>
+                <ul id="note-links-outgoing"><li>Loading...</li></ul>
+            </div>
+             <div class="link-list">
+                <strong>Linked From (Incoming):</strong>
+                <ul id="note-links-incoming"><li>Loading...</li></ul>
+            </div>
+            <p><em>Created: <span id="note-created"></span></em></p>
+            <p><em>Updated: <span id="note-updated"></span></em></p>
+        </div>
+
+        <!-- Edit Note Form (Initially Hidden) -->
+        <div id="note-edit-form-container" class="hidden">
+             <h3>Edit Note</h3>
+             <form id="note-edit-form">
+                <input type="hidden" id="edit-note-id"> <!-- Store ID -->
+                <div>
+                    <label for="edit-content">Content:</label>
+                    <textarea id="edit-content" required></textarea>
+                </div>
+                <div>
+                    <label for="edit-memory-type">Memory Type:</label>
+                    <select id="edit-memory-type">
+                        <option value="uncategorized">Uncategorized</option>
+                        <option value="semantic">Semantic</option>
+                        <option value="episodic">Episodic</option>
+                        <option value="procedural">Procedural</option>
+                    </select>
+                </div>
+                <div class="button-group">
+                    <button type="submit">Save Changes</button>
+                    <button type="button" id="cancel-edit-btn" class="secondary">Cancel</button>
+                </div>
+                 <div id="edit-error" class="error-message hidden"></div>
+             </form>
+        </div>
+
+        <!-- Placeholder when no note is selected -->
+        <div id="note-detail-placeholder">
+            Select a note to view details or create a new one.
+        </div>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

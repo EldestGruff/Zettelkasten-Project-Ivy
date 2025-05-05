@@ -17,6 +17,8 @@ if str(project_root_parent) not in sys.path:
 from fastapi import FastAPI, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import text
+from fastapi.staticfiles import StaticFiles
+from starlette.responses import FileResponse
 
 # Keep original 'app.' imports - Python should now find 'backend' in sys.path
 # and then look for 'app' within it.
@@ -36,12 +38,20 @@ app = FastAPI(
 app.include_router(tags.router)
 app.include_router(notes.router)
 
+# --- Mount Static Files Directory ---
+# This line tells FastAPI to serve files from the 'frontend/static' directory
+# under the URL path '/static'.
+# The 'name="static"' argument allows generating URLs for static files later if needed.
+# Place this *after* API routers usually, but before the root path if serving index.html
+app.mount("/static", StaticFiles(directory="frontend/static"), name="static")
+
+
+# --- Root Endpoint (Can optionally serve index.html later) ---
 @app.get("/")
-async def read_root():
-    """
-    Root endpoint providing a welcome message.
-    """
-    return {"message": "Welcome to Ivy's Second Brain API!"}
+@app.get("/")
+async def serve_index():
+    """ Serves the main index.html file """
+    return FileResponse("frontend/index.html")
 
 @app.get("/ping")
 async def ping():
