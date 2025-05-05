@@ -95,66 +95,63 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    function displayNoteDetail(note) {
-        currentNote = note; // Update global state
+function displayNoteDetail(note) {
+    currentNote = note; // Update global state
 
-        // Populate static fields
-        noteTitleElement.textContent = `Note: ${note.id}`;
-        noteContentDisplayElement.textContent = note.content;
-        noteMemoryTypeElement.textContent = note.memory_type;
-        noteArchivedElement.textContent = note.is_archived ? 'Yes' : 'No';
-        noteCreatedElement.textContent = new Date(note.created_at).toLocaleString();
-        noteUpdatedElement.textContent = new Date(note.updated_at).toLocaleString();
+    // Populate static fields
+    noteTitleElement.textContent = `Note: ${note.id}`;
+    noteContentDisplayElement.textContent = note.content;
+    noteMemoryTypeElement.textContent = note.memory_type;
+    noteArchivedElement.textContent = note.is_archived ? 'Yes' : 'No';
+    noteCreatedElement.textContent = new Date(note.created_at).toLocaleString();
+    noteUpdatedElement.textContent = new Date(note.updated_at).toLocaleString();
 
-        // Populate Tags (with remove buttons)
-        noteTagsElement.innerHTML = ''; // Clear previous tags
-        if (note.tags && note.tags.length > 0) {
-            note.tags.forEach(tag => {
-                const tagSpan = document.createElement('span');
-                tagSpan.textContent = tag.name;
-                const removeBtn = document.createElement('button');
-                removeBtn.textContent = 'x';
-                removeBtn.title = `Remove tag '${tag.name}'`;
-                removeBtn.dataset.tagId = tag.id;
-                removeBtn.onclick = () => handleRemoveTag(note.id, tag.id); // Use onclick for simplicity here
-                tagSpan.appendChild(removeBtn);
-                noteTagsElement.appendChild(tagSpan);
-            });
-        } else {
-            noteTagsElement.textContent = 'None';
-        }
-
-    function displayNoteDetail(note) {
-
-        // Update Archive button text/state
-        archiveNoteBtn.textContent = note.is_archived ? 'Unarchive' : 'Archive';
-        archiveNoteBtn.dataset.noteId = note.id; // Store ID for handler
-        archiveNoteBtn.disabled = false; // Enable button
-
-        // Store ID for delete button handler
-        deleteNoteBtn.dataset.noteId = note.id;
-        deleteNoteBtn.disabled = false; // Enable button
-
-        // Enable Add Tag / Create Link buttons
-        addTagBtn.disabled = false;
-        createLinkBtn.disabled = false;
-        addTagInput.value = ''; // Clear inputs
-        linkTargetNoteIdInput.value = '';
-        hideError(addTagErrorElement); // Hide errors
-        hideError(createLinkErrorElement);
-
-
-        // Show/hide sections
-        noteDetailElement.classList.remove('hidden');
-        editFormContainer.classList.add('hidden'); // Hide edit form if it was open
-        noteDetailPlaceholder.classList.add('hidden');
-
-        // Fetch and display links
-        fetchAndDisplayLinks(note.id);
-
-        // Highlight selected note in the list
-        highlightSelectedNote(note.id);
+    // Populate Tags (with remove buttons)
+    noteTagsElement.innerHTML = ''; // Clear previous tags
+    if (note.tags && note.tags.length > 0) {
+        note.tags.forEach(tag => {
+            const tagSpan = document.createElement('span');
+            tagSpan.textContent = tag.name;
+            const removeBtn = document.createElement('button');
+            removeBtn.textContent = 'x';
+            removeBtn.title = `Remove tag '${tag.name}'`;
+            removeBtn.dataset.tagId = tag.id;
+            removeBtn.onclick = () => handleRemoveTag(note.id, tag.id);
+            tagSpan.appendChild(removeBtn);
+            noteTagsElement.appendChild(tagSpan);
+        });
+    } else {
+        noteTagsElement.textContent = 'None';
     }
+
+    // Update Archive button text/state
+    archiveNoteBtn.textContent = note.is_archived ? 'Unarchive' : 'Archive';
+    archiveNoteBtn.dataset.noteId = note.id; // Store ID for handler
+    archiveNoteBtn.disabled = false; // Enable button
+
+    // Store ID for delete button handler
+    deleteNoteBtn.dataset.noteId = note.id;
+    deleteNoteBtn.disabled = false; // Enable button
+
+    // Enable Add Tag / Create Link buttons
+    addTagBtn.disabled = false;
+    createLinkBtn.disabled = false;
+    addTagInput.value = ''; // Clear inputs
+    linkTargetNoteIdInput.value = '';
+    hideError(addTagErrorElement); // Hide errors
+    hideError(createLinkErrorElement);
+
+    // Show/hide sections
+    noteDetailElement.classList.remove('hidden');
+    editFormContainer.classList.add('hidden'); // Hide edit form if it was open
+    noteDetailPlaceholder.classList.add('hidden');
+
+    // Fetch and display links
+    fetchAndDisplayLinks(note.id);
+
+    // Highlight selected note in the list
+    highlightSelectedNote(note.id);
+}
 
     function displayLinks(listElement, links) {
          listElement.innerHTML = ''; // Clear loading/previous
