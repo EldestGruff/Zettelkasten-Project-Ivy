@@ -120,7 +120,7 @@ graph TD
     class GITHUB external
     class PLEX,NFS_SMB storage
     class VOL_PG,VOL_QDRANT,VOL_OLLAMA,GPU host
-
+```
 
 ## Local Development Setup (on Host similar to Ivy)
 
