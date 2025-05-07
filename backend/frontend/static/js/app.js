@@ -323,6 +323,65 @@ function displayNoteDetail(note) {
         }
     }
 
+    async function handleDeleteNote() {
+        console.log("handleDeleteNote entered. currentNote:", currentNote); // Add log
+        if (!currentNote) return;
+
+        const noteId = currentNote.id;
+        // Add extra confirmation for permanent delete
+        const confirmation1 = confirm(`PERMANENTLY DELETE NOTE ${noteId}? This cannot be undone.`);
+        if (!confirmation1) {
+            console.log("Delete confirmation 1 cancelled."); // Add log
+            return;
+        }
+
+        console.log("Delete confirmation 1 passed. Prompting for ID."); // Add log
+        const confirmation2 = prompt(`To confirm permanent deletion, please type the note ID (${noteId}) below:`);
+
+        console.log("Prompt input:", confirmation2, "Expected ID:", noteId); // Add log
+        if (confirmation2 !== noteId) {
+            console.log("Delete confirmation 2 failed (ID mismatch)."); // Add log
+            alert("Confirmation failed. Note not deleted.");
+            return;
+        }
+
+        console.log(`Attempting to permanently delete note ${noteId}...`);
+        try {
+            // Disable button during API call (optional but good UX)
+            deleteNoteBtn.disabled = true;
+            deleteNoteBtn.textContent = 'Deleting...';
+
+            await apiCall(`/notes/${noteId}/permanent`, {
+                method: 'DELETE'
+            });
+
+            console.log("Delete API call successful."); // Add log
+            alert(`Note ${noteId} permanently deleted.`);
+
+            // Clear current view and refresh list
+            currentNote = null;
+            noteDetailElement.classList.add('hidden');
+            noteDetailPlaceholder.textContent = `Note ${noteId} deleted. Select another note.`;
+            noteDetailPlaceholder.classList.remove('hidden');
+            // Disable buttons again as no note is selected
+            archiveNoteBtn.disabled = true;
+            deleteNoteBtn.disabled = true;
+            addTagBtn.disabled = true;
+            createLinkBtn.disabled = true;
+            // Reset delete button text here too, although it might be hidden
+            deleteNoteBtn.textContent = 'Delete';
+
+            fetchAndDisplayNotes(); // Refresh list
+
+        } catch (error) {
+            console.error(`Error deleting note: ${error.message}`); // Use console.error
+            alert(`Error deleting note: ${error.message}`);
+            // Re-enable button on error
+            deleteNoteBtn.disabled = false;
+            deleteNoteBtn.textContent = 'Delete';
+        }
+    }
+
     async function handleRemoveTag(noteId, tagId) {
         console.log(`Attempting to remove tag ${tagId} from note ${noteId}`);
         if (!confirm(`Are you sure you want to remove tag ID ${tagId} from this note?`)) {
@@ -338,6 +397,112 @@ function displayNoteDetail(note) {
              alert(`Error removing tag: ${error.message}`); // Simple alert for now
         }
     }
+
+    // --- Add this missing handler function ---
+    async function handleAddTag() {
+        console.log("handleAddTag entered. currentNote:", currentNote); // Add log
+        if (!currentNote) return;
+
+        hideError(addTagErrorElement); // Hide previous errors
+
+        const noteId = currentNote.id;
+        const tagInput = addTagInput.value.trim();
+
+        if (!tagInput) {
+            showError(addTagErrorElement, "Enter an existing Tag ID."); // Updated msg
+            return;
+        }
+
+        // --- For now, only handle numeric Tag IDs ---
+        const tagId = parseInt(tagInput, 10);
+        if (isNaN(tagId)) {
+            showError(addTagErrorElement, "Invalid input: Please enter a numeric Tag ID.");
+            return;
+        }
+        // --- End Tag ID Handling ---
+
+        // TODO: Implement finding tag by name later, requiring a new API endpoint like GET /tags?name=...
+        //       Then create if not found, or use found ID.
+
+        console.log(`Attempting to add tag ID ${tagId} to note ${noteId}`);
+        try {
+            // Disable button during API call
+            addTagBtn.disabled = true;
+            addTagBtn.textContent = 'Adding...';
+
+            const updatedNote = await apiCall(`/notes/${noteId}/tags/${tagId}`, {
+                method: 'POST'
+            });
+
+            console.log("Add tag API call successful."); // Add log
+            // Refresh the detail view to show the updated tag list
+            displayNoteDetail(updatedNote);
+            addTagInput.value = ''; // Clear input on success
+
+        } catch (error) {
+            console.error(`Error adding tag: ${error.message}`); // Use console.error
+            showError(addTagErrorElement, `Failed: ${error.message}`); // Show error in UI
+        } finally {
+            // Re-enable button regardless of success/failure
+            addTagBtn.disabled = false;
+            addTagBtn.textContent = 'Add Tag';
+        }
+    }
+// -----------------------------------------
+
+    async function handleCreateLink() {
+        console.log("handleCreateLink entered. currentNote:", currentNote); // Add log
+        if (!currentNote) return;
+
+        hideError(createLinkErrorElement); // Hide previous errors
+
+        const sourceNoteId = currentNote.id;
+        const targetNoteId = linkTargetNoteIdInput.value.trim();
+
+        if (!targetNoteId) {
+            showError(createLinkErrorElement, "Enter Target Note ID.");
+            return;
+        }
+        // Basic UUID validation (simple check, not foolproof)
+        if (!/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(targetNoteId)) {
+            showError(createLinkErrorElement, "Invalid Target Note ID format (UUID expected).");
+            return;
+        }
+        if (sourceNoteId === targetNoteId) {
+            showError(createLinkErrorElement, "Cannot link a note to itself.");
+            return;
+        }
+
+
+        console.log(`Attempting to link note ${sourceNoteId} to ${targetNoteId}`);
+
+        try {
+            // Disable button during API call
+            createLinkBtn.disabled = true;
+            createLinkBtn.textContent = 'Linking...';
+
+            // We don't have a specific response model defined for this,
+            // but the API endpoint returns minimal info on success (201)
+            await apiCall(`/notes/${sourceNoteId}/links/${targetNoteId}`, {
+                method: 'POST'
+            });
+
+            console.log("Create link API call successful."); // Add log
+            // Refresh links in the detail view
+            fetchAndDisplayLinks(sourceNoteId); // Refresh just the links part
+            linkTargetNoteIdInput.value = ''; // Clear input on success
+
+        } catch (error) {
+            console.error("Error creating link:", error); // Use console.error
+            showError(createLinkErrorElement, `Failed: ${error.message}`); // Show error in UI
+        } finally {
+            // Re-enable button regardless of success/failure
+            createLinkBtn.disabled = false;
+            createLinkBtn.textContent = 'Create Link';
+        }
+    }
+    // -----------------------------------------
+
 
 async function handleToggleArchive() {
     console.log("handleToggleArchive entered. currentNote:", currentNote);

@@ -113,14 +113,52 @@ async def unarchive_note_endpoint(note_id: uuid.UUID, db: DbSession):
         print(f"ERROR unarchiving note {note_id}: {e}")
         raise HTTPException(status_code=500, detail="An unexpected error occurred.")
 
-# --- Endpoint for Permanent Deletion ---
+# --- Endpoint for Permanent Deletion --- (Corrected)
 @router.delete("/{note_id}/permanent", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_note_permanently_endpoint(note_id: uuid.UUID, db: DbSession):
-    """ Permanently delete a note by ID. """
-    removed_note = crud.note.remove_note_permanently(db=db, note_id=note_id)
-    if removed_note is None:
-        raise HTTPException(status_code=404, detail=f"Note {note_id} not found.")
-    return None
+async def delete_note_permanently_endpoint( # Ensure this is async def
+    note_id: uuid.UUID,
+    db: DbSession
+):
+    """
+    Permanently delete a note by ID from DB and Vector Store.
+    Requires confirmation handled by the client.
+    """
+    print(f"Received request to permanently delete note: {note_id}") # Add logging
+
+    # Optional: Add check to ensure note exists and maybe is archived first
+    # db_note = await crud.note.get_note_including_archived(db, note_id=note_id) # Use await if get func is async
+    # if db_note is None:
+    #     raise HTTPException(status_code=404, detail="Note not found.")
+    # if not db_note.is_archived:
+    #      raise HTTPException(status_code=400, detail="Note must be archived before permanent deletion.")
+
+    try:
+        # Call the CRUD function and AWAIT its completion
+        removed_note = await crud.note.remove_note_permanently(db=db, note_id=note_id)
+
+        # Check if the CRUD function indicated the note wasn't found
+        if removed_note is None:
+            print(f"Note {note_id} not found by CRUD function for permanent deletion.") # Add logging
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Note with ID {note_id} not found, cannot delete permanently.",
+            )
+
+        print(f"Successfully processed permanent deletion for note: {note_id}") # Add logging
+        # Return None for 204 No Content response
+        return None
+
+    except Exception as e:
+         # Log the specific error for debugging
+         print(f"ERROR during permanent deletion of note {note_id}: {e}")
+         # Rollback might be needed if the error occurred after Qdrant delete but before/during DB commit
+         # However, the session is typically closed by the dependency injector anyway.
+         # db.rollback() # Consider implications carefully
+         raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            # Provide a slightly more informative error to the client if possible/safe
+            detail=f"Failed to permanently delete note {note_id}. An internal error occurred.",
+        )
 
 # --- Note-Tag Association Endpoints ---
 
