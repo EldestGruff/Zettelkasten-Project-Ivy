@@ -32,7 +32,7 @@ It features a FastAPI backend providing a RESTful API for managing notes, tags, 
 *   **Backup Target (Planned):** "Moria" - TrueNAS SCALE server
 
 ## Project Structure
-
+```
 zettelkasten-project/
 ├── backend/
 │ ├── app/ # Core application code
@@ -61,7 +61,7 @@ zettelkasten-project/
 ├── ARCHITECTURE.md # System architecture diagram and description
 ├── docker-compose.yml # Docker Compose configuration for services
 └── README.md # This file
-
+```
 ## Local Development Setup (on Host similar to Ivy)
 
 **Prerequisites:**
