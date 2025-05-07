@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from fastapi.staticfiles import StaticFiles
 from starlette.responses import FileResponse
+from contextlib import asynccontextmanager # For lifespan events (preferred over @on_event)
 
 # Keep original 'app.' imports - Python should now find 'backend' in sys.path
 # and then look for 'app' within it.
@@ -26,13 +27,34 @@ from app.core.config import settings
 from app.api.deps import get_db, DbSession
 from app.api.routers import tags
 from app.api.routers import notes
+from app.db.vector_store import ensure_collection_exists # Import the function
+from app.services.embedding import get_embedding 
 
-# Create an instance of the FastAPI class
+# --- Lifespan Context Manager ---
+# This is the modern way to handle startup/shutdown events in FastAPI
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Code to run on startup
+    print("Application startup...")
+    print("Ensuring Qdrant collection exists...")
+    try:
+        ensure_collection_exists()
+        print("Qdrant collection check complete.")
+    except Exception as e:
+        print(f"Qdrant initialization failed: {e}")
+        # Decide if the app should fail to start if Qdrant fails
+        # raise e
+    yield
+    # Code to run on shutdown (if needed)
+    print("Application shutdown...")
+
+
 app = FastAPI(
     title=settings.PROJECT_NAME if hasattr(settings, 'PROJECT_NAME') else "Ivy's Second Brain API",
-    version="0.1.0" # You could also load version from settings
-    # Add other FastAPI options like description, openapi_url etc. if needed
+    version="0.1.0",
+    lifespan=lifespan # Register the lifespan context manager
 )
+
 
 # This makes all routes defined in tags.router available under the /tags prefix
 app.include_router(tags.router)
@@ -59,6 +81,21 @@ async def ping():
     Simple health check endpoint.
     """
     return {"status": "ok", "message": "pong"}
+
+@app.post("/test-embedding/")
+async def test_embedding_endpoint(text: str):
+    """ Simple endpoint to test embedding generation. """
+    if not text:
+        raise HTTPException(status_code=400, detail="Text query parameter is required.")
+    embedding = await get_embedding(text)
+    if embedding:
+        return {
+            "text": text,
+            "embedding_preview": embedding[:5] + ["..."], # Show first 5 dimensions
+            "vector_dimension": len(embedding)
+            }
+    else:
+         raise HTTPException(status_code=500, detail="Failed to get embedding from Ollama.")
 
 # --- Example of using the DB Session Dependency ---
 @app.get("/db-check/")

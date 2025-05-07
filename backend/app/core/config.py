@@ -19,9 +19,11 @@ class Settings(BaseSettings):
     QDRANT_HOST: str = "qdrant"
     QDRANT_PORT: int = 6333
     QDRANT_API_KEY: Optional[str] = None # If using Qdrant cloud or auth
+    QDRANT_COLLECTION_NAME: str = "notes_embeddings"
 
     # Optional: Ollama API details
     OLLAMA_API_BASE_URL: str = "http://localhost:11434" # Default, might need adjustment
+    EMBEDDING_MODEL_NAME: str = "nomic-embed-text"
 
     # Define the database connection URL using a computed field
     # This builds the URL from the individual components

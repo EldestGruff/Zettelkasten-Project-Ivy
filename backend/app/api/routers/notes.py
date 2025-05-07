@@ -30,7 +30,7 @@ router = APIRouter(
 async def create_note_endpoint(note_in: NoteCreate, db: DbSession):
     """ Create a new note. """
     try:
-        created_note = crud.note.create_note(db=db, note_in=note_in)
+        created_note = await crud.note.create_note(db=db, note_in=note_in)
         return created_note
     except Exception as e:
         db.rollback()
@@ -70,7 +70,7 @@ async def update_note_endpoint(note_id: uuid.UUID, note_in: NoteUpdate, db: DbSe
     if not note_in.model_dump(exclude_unset=True):
          raise HTTPException(status_code=400, detail="No update data provided.")
     try:
-        updated_note = crud.note.update_note(db=db, db_note=db_note, note_in=note_in)
+        updated_note = await crud.note.update_note(db=db, db_note=db_note, note_in=note_in)
         return updated_note
     except Exception as e:
         db.rollback()
@@ -89,7 +89,7 @@ async def archive_note_endpoint(note_id: uuid.UUID, db: DbSession):
         else:
             raise HTTPException(status_code=404, detail=f"Note {note_id} not found.")
     try:
-        archived_note = crud.note.archive_note(db=db, db_note=db_note)
+        archived_note = await crud.note.archive_note(db=db, db_note=db_note)
         return archived_note
     except Exception as e:
         db.rollback()
@@ -106,7 +106,7 @@ async def unarchive_note_endpoint(note_id: uuid.UUID, db: DbSession):
     if not db_note.is_archived:
          raise HTTPException(status_code=400, detail="Note is not archived.")
     try:
-        unarchived_note = crud.note.unarchive_note(db=db, db_note=db_note)
+        unarchived_note = await crud.note.unarchive_note(db=db, db_note=db_note)
         return unarchived_note
     except Exception as e:
         db.rollback()

@@ -4,6 +4,10 @@ from typing import List, Optional
 
 from sqlalchemy.orm import Session
 from sqlalchemy import select, update, delete # Import update/delete for specific operations
+from qdrant_client import QdrantClient, models as qdrant_models
+from app.db.vector_store import get_qdrant_client # Function to get client instance
+from app.core.config import settings # To get collection name
+from app.services.embedding import get_embedding # Our embedding function
 
 # Import models and schemas
 from app.models.note import Note
@@ -41,65 +45,209 @@ def get_notes(
 
 # --- Create Operation ---
 
-def create_note(db: Session, *, note_in: NoteCreate) -> Note:
-    """Create a new note."""
-    # We might add logic here later to handle initial tag assignment if needed
+# Mark function as async since get_embedding is async
+async def create_note(db: Session, *, note_in: NoteCreate) -> Note:
+    """Create a new note and its vector embedding."""
     db_note = Note(**note_in.model_dump())
     db.add(db_note)
-    db.commit()
+    db.commit() # Commit to get the ID and ensure data integrity first
     db.refresh(db_note)
-    # TODO: Add Qdrant vector creation here after commit
+
+    # --- Add Embedding and Qdrant Upsert ---
+    try:
+        embedding = await get_embedding(db_note.content)
+        if embedding:
+            qdrant_client = get_qdrant_client()
+            qdrant_client.upsert(
+                collection_name=settings.QDRANT_COLLECTION_NAME,
+                points=[
+                    qdrant_models.PointStruct(
+                        id=str(db_note.id), # Qdrant IDs are typically strings or ints
+                        vector=embedding,
+                        payload={ # Store filterable metadata
+                            "memory_type": db_note.memory_type.value,
+                            "is_archived": db_note.is_archived,
+                            # Add other fields if needed for filtering later (e.g., created_at)
+                        }
+                    )
+                ],
+                wait=True # Wait for operation to be indexed (can be False for higher throughput)
+            )
+            print(f"Upserted vector for new note {db_note.id} into Qdrant.")
+        else:
+            print(f"Warning: Failed to generate embedding for new note {db_note.id}. Vector not stored.")
+            # Decide on error handling: raise exception? Log more severely?
+    except Exception as e:
+        print(f"ERROR: Failed to upsert vector for new note {db_note.id} to Qdrant: {e}")
+        # Should this error cause the note creation to fail? Or just log?
+        # For now, we just log it. The note exists in Postgres.
+    # -------------------------------------
+
     return db_note
 
 # --- Update Operation ---
 
-def update_note(db: Session, *, db_note: Note, note_in: NoteUpdate) -> Note:
-    """Update an existing note."""
+# Mark function as async
+async def update_note(db: Session, *, db_note: Note, note_in: NoteUpdate) -> Note:
+    """Update an existing note and its vector embedding if content changed."""
     update_data = note_in.model_dump(exclude_unset=True)
+    content_changed = 'content' in update_data and update_data['content'] != db_note.content
+    payload_changed = any(k in update_data for k in ['memory_type', 'is_archived']) # Check if payload fields changed
+
+    # Apply updates to the SQLAlchemy model
     for field, value in update_data.items():
         setattr(db_note, field, value)
+
     db.add(db_note)
     db.commit()
     db.refresh(db_note)
-    # TODO: Add Qdrant vector update here after commit
+
+    # --- Update Embedding/Payload in Qdrant ---
+    if content_changed or payload_changed:
+        try:
+            qdrant_client = get_qdrant_client()
+            if content_changed:
+                # Regenerate embedding only if content actually changed
+                new_embedding = await get_embedding(db_note.content)
+                if new_embedding:
+                    # Upsert both vector and payload
+                    qdrant_client.upsert(
+                        collection_name=settings.QDRANT_COLLECTION_NAME,
+                        points=[
+                            qdrant_models.PointStruct(
+                                id=str(db_note.id),
+                                vector=new_embedding, # Pass the new vector
+                                payload={
+                                    "memory_type": db_note.memory_type.value,
+                                    "is_archived": db_note.is_archived,
+                                }
+                            )
+                        ],
+                        wait=True
+                    )
+                    print(f"Upserted vector & payload for updated note {db_note.id} into Qdrant.")
+                else:
+                     print(f"Warning: Failed to generate embedding for updated note {db_note.id}. Vector not updated.")
+                     # Still update payload if needed? Decide based on requirements
+                     if payload_changed: # If payload also changed, update it separately
+                         qdrant_client.set_payload(
+                            collection_name=settings.QDRANT_COLLECTION_NAME,
+                            payload={
+                                "memory_type": db_note.memory_type.value,
+                                "is_archived": db_note.is_archived,
+                            },
+                            points=[str(db_note.id)],
+                            wait=True
+                         )
+                         print(f"Updated Qdrant payload only (embedding failed) for note {db_note.id}.")
+
+            elif payload_changed: # Only payload changed, content did not
+                # Update only the payload using set_payload
+                qdrant_client.set_payload(
+                    collection_name=settings.QDRANT_COLLECTION_NAME,
+                    payload={
+                        "memory_type": db_note.memory_type.value,
+                        "is_archived": db_note.is_archived,
+                    },
+                    points=[str(db_note.id)],
+                    wait=True
+                )
+                print(f"Updated Qdrant payload only for note {db_note.id}.")
+
+        except Exception as e:
+            print(f"ERROR: Failed to update Qdrant for note {db_note.id}: {e}")
+    # ---------------------------------------
+
     return db_note
 
 # --- Archive / Unarchive ---
 
-def archive_note(db: Session, *, db_note: Note) -> Note:
-    """Mark a note as archived."""
+# Mark function as async (though not strictly needed unless we add async Qdrant calls later)
+async def archive_note(db: Session, *, db_note: Note) -> Note:
+    """Mark a note as archived and update its Qdrant payload."""
+    updated = False
     if not db_note.is_archived:
         db_note.is_archived = True
         db.add(db_note)
         db.commit()
         db.refresh(db_note)
-        # TODO: Update Qdrant vector payload (is_archived=True)
+        updated = True
+
+    # --- Update Qdrant Payload ---
+    if updated: # Only update Qdrant if DB state actually changed
+        try:
+            qdrant_client = get_qdrant_client()
+            # Update only the payload using set_payload
+            qdrant_client.set_payload(
+                collection_name=settings.QDRANT_COLLECTION_NAME,
+                payload={"is_archived": True},
+                points=[str(db_note.id)], # List of point IDs to update
+                wait=True
+            )
+            print(f"Updated Qdrant payload (archive=True) for note {db_note.id}.")
+        except Exception as e:
+             print(f"ERROR: Failed to update Qdrant payload (archive=True) for note {db_note.id}: {e}")
+    # ---------------------------
     return db_note
 
-def unarchive_note(db: Session, *, db_note: Note) -> Note:
-    """Mark a note as not archived."""
+# Mark function as async
+async def unarchive_note(db: Session, *, db_note: Note) -> Note:
+    """Mark a note as active (unarchive) and update its Qdrant payload."""
+    updated = False
     if db_note.is_archived:
         db_note.is_archived = False
         db.add(db_note)
         db.commit()
         db.refresh(db_note)
-        # TODO: Update Qdrant vector payload (is_archived=False)
+        updated = True
+
+    # --- Update Qdrant Payload ---
+    if updated:
+        try:
+            qdrant_client = get_qdrant_client()
+            qdrant_client.set_payload(
+                collection_name=settings.QDRANT_COLLECTION_NAME,
+                payload={"is_archived": False},
+                points=[str(db_note.id)],
+                wait=True
+            )
+            print(f"Updated Qdrant payload (archive=False) for note {db_note.id}.")
+        except Exception as e:
+             print(f"ERROR: Failed to update Qdrant payload (archive=False) for note {db_note.id}: {e}")
+    # ---------------------------
     return db_note
 
-# --- Permanent Delete Operation --- (Requires careful handling)
 
-def remove_note_permanently(db: Session, *, note_id: uuid.UUID) -> Optional[Note]:
+# --- Permanent Delete Operation ---
+
+# Mark function as async
+async def remove_note_permanently(db: Session, *, note_id: uuid.UUID) -> Optional[Note]:
     """
-    Permanently remove a note by its ID. USE WITH EXTREME CAUTION.
-    Typically only called on already archived notes after confirmation.
+    Permanently remove a note by ID from DB and Qdrant. USE WITH EXTREME CAUTION.
     """
-    db_note = db.get(Note, note_id) # Get note directly by ID
+    db_note = db.get(Note, note_id)
     if db_note:
-        # TODO: Remove from Qdrant *before* deleting from DB
+        note_uuid_str = str(db_note.id) # Store before potential expiration
+
+        # --- Delete from Qdrant first ---
+        try:
+            qdrant_client = get_qdrant_client()
+            qdrant_client.delete(
+                collection_name=settings.QDRANT_COLLECTION_NAME,
+                points_selector=qdrant_models.PointIdsList(points=[note_uuid_str]),
+                wait=True
+            )
+            print(f"Deleted vector for note {note_uuid_str} from Qdrant.")
+        except Exception as e:
+             print(f"ERROR: Failed to delete vector for note {note_uuid_str} from Qdrant: {e}")
+             # Decide whether to proceed with DB deletion if Qdrant fails.
+             # For now, we proceed but log the error.
+        # -------------------------------
+
+        # Delete from PostgreSQL
         db.delete(db_note)
         db.commit()
-        # Return the object mainly for confirmation
-        return db_note
+        return db_note # Return the expired object for confirmation
     return None
 
 # --- Future: Functions for adding/removing tags/links ---

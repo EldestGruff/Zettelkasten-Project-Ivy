@@ -339,6 +339,45 @@ function displayNoteDetail(note) {
         }
     }
 
+async function handleToggleArchive() {
+    console.log("handleToggleArchive entered. currentNote:", currentNote);
+    if (!currentNote) return;
+
+    const noteId = currentNote.id;
+    const isArchived = currentNote.is_archived;
+    const action = isArchived ? 'unarchive' : 'archive';
+    const confirmationMessage = `Are you sure you want to ${action} note ${noteId}?`;
+
+    console.log("About to show confirmation:", confirmationMessage);
+    if (!confirm(confirmationMessage)) {
+        console.log("Confirmation denied.");
+        return;
+    }
+    console.log("Confirmation accepted. Proceeding with API call...");
+
+    try {
+        // Disable button during API call
+        archiveNoteBtn.disabled = true;
+        archiveNoteBtn.textContent = `${action.charAt(0).toUpperCase() + action.slice(1)}ing...`;
+
+        const updatedNote = await apiCall(`/notes/${noteId}/${action}`, {
+            method: 'POST'
+        });
+
+        console.log("API call successful, updating UI...");
+        displayNoteDetail(updatedNote); // Update details shown (incl. button text)
+        fetchAndDisplayNotes(); // Refresh list view in case filtering changes
+
+    } catch (error) {
+        console.error(`Error in handleToggleArchive: ${error.message}`);
+        alert(`Error ${action}ing note: ${error.message}`);
+         // Re-enable button and reset text on error
+         archiveNoteBtn.disabled = false;
+         archiveNoteBtn.textContent = isArchived ? 'Unarchive' : 'Archive';
+    }
+}
+// -----------------------------------------
+
     // --- Async Function Wrappers (Initial load, Links) ---
     async function fetchAndDisplayNotes() {
         console.log("Fetching notes list...");
@@ -369,6 +408,15 @@ function displayNoteDetail(note) {
             incomingLinksList.innerHTML = '<li>Error loading links</li>';
         }
      }
+
+// Near the end of DOMContentLoaded
+console.log("Attempting to add listener to archiveNoteBtn:", archiveNoteBtn); // Check the button object
+if (archiveNoteBtn) {
+    archiveNoteBtn.addEventListener('click', handleToggleArchive);
+    console.log("Listener added to archiveNoteBtn"); // Confirm listener attached
+} else {
+    console.error("Archive button element not found!");
+}
 
     // --- Initial Setup & Event Listeners ---
     fetchAndDisplayNotes(); // Load initial list

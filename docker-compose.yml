@@ -1,5 +1,4 @@
 # ~/zettelkasten-project/docker-compose.yml
-version: '3.8'
 
 services:
   postgres:
@@ -55,42 +54,43 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  # --- Backend Service Placeholder ---
-  # We will add our FastAPI backend service definition here later
-  # backend:
-  #   build: ./backend # Assuming backend code is in a 'backend' subdir
-  #   container_name: zettelkasten-backend
-  #   restart: unless-stopped
-  #   env_file: .env
-  #   environment:
-  #     DATABASE_URL: "postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}"
-  #     QDRANT_HOST: "qdrant"
-  #     QDRANT_PORT: "6333" # Internal port, matching qdrant service
-  #     OLLAMA_API_BASE_URL: ${OLLAMA_API_BASE_URL}
-  #     TZ: ${TZ}
-  #   ports:
-  #     - "127.0.0.1:8000:8000" # Map backend API port to localhost on Ivy
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy # Wait for postgres healthcheck
-  #     qdrant:
-  #       condition: service_started # Qdrant doesn't have a simple healthcheck command easily callable here
-  #   volumes:
-  #     - ./backend:/app # Mount code for development (optional)
-  #   networks:
-  #     - zettelkasten_net
-  #   logging:
-  #     driver: "json-file"
-  #     options:
-  #       max-size: "10m"
-  #       max-file: "3"
+  ollama: # --- NEW OLLAMA SERVICE ---
+    image: ollama/ollama:latest
+    container_name: zettelkasten-ollama
+    ports:
+      # Map Ollama's default port to localhost on Ivy
+      - "127.0.0.1:11434:11434"
+    volumes:
+      # Mount a volume to persist downloaded models
+      - ollama_data:/root/.ollama
+    # --- GPU Passthrough Configuration ---
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1 # Or "all" if you want to guarantee all GPUs
+              capabilities: [gpu] # Request GPU capabilities
+    # --- End GPU Passthrough ---
+    pull_policy: always # Ensure we get latest ollama image on start/recreate
+    restart: unless-stopped
+    networks:
+      - zettelkasten_net
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5" # Keep more logs for Ollama
 
-# Define Docker volumes (will be stored under Docker's default path on Ivy, e.g., /var/lib/docker/volumes)
+  # --- Backend Service Placeholder ---
+  # backend:
+  #   # ... (backend definition) ...
+
 volumes:
   postgres_data:
   qdrant_data:
+  ollama_data: # --- Add volume definition for Ollama ---
 
-# Define the custom network
 networks:
   zettelkasten_net:
     driver: bridge
