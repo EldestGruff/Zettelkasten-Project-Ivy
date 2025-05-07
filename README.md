@@ -62,6 +62,75 @@ zettelkasten-project/
 ├── docker-compose.yml # Docker Compose configuration for services
 └── README.md # This file
 ```
+
+## Architecture Diagram (Mermaid)
+
+```mermaid
+graph TD
+    %% Define Styles (Optional)
+    classDef docker fill:#f9f,stroke:#333,stroke-width:2px;
+    classDef host fill:#ccf,stroke:#333,stroke-width:2px;
+    classDef external fill:#eee,stroke:#666,stroke-width:1px;
+    classDef dev fill:#cfc,stroke:#333,stroke-width:1px;
+    classDef storage fill:#fec,stroke:#333,stroke-width:1px;
+
+    %% Actors / Dev Machines
+    subgraph Toottoot [Development Laptop (macOS)]
+        direction LR
+        USER[User] --> BROWSER[Browser / curl]
+        USER --> EDITOR[Editor / IDE]
+        USER --> GIT_CLIENT[Git Client]
+    end
+    class Toottoot dev
+
+    %% Main Host Machine
+    subgraph Ivy [Host: Ivy (Ubuntu)]
+        direction TB
+
+        subgraph Docker [Docker Engine on Ivy]
+            direction TB
+            OLLAMA[Ollama Container]:::docker --> GPU[NVIDIA GPU A4500]
+            POSTGRES[PostgreSQL Container]:::docker -- Data --- VOL_PG[(postgres_data Volume)]
+            QDRANT[Qdrant Container]:::docker -- Data --- VOL_QDRANT[(qdrant_data Volume)]
+            OLLAMA -- Models --- VOL_OLLAMA[(ollama_data Volume)]
+        end
+        class Docker host
+
+        BACKEND_PROCESS[FastAPI/Uvicorn (.venv)]:::host
+    end
+    class Ivy host
+
+    %% External / Remote Services
+    GITHUB[GitHub Repository]:::external
+
+    %% Storage / Backup Target
+    MORIA[Host: Moria (TrueNAS)]:::storage
+    subgraph MoriaServices [Services on Moria]
+        direction LR
+        PLEX[Plex Media Server]
+        NFS_SMB[(NFS/SMB Share - Planned)]
+    end
+    class MoriaServices storage
+
+
+    %% Connections
+    BROWSER -- HTTP API (ivy:8000) --> BACKEND_PROCESS
+    BACKEND_PROCESS -- DB Connection (127.0.0.1:5432) --> POSTGRES
+    BACKEND_PROCESS -- Vector DB Connection (127.0.0.1:6333) --> QDRANT
+    BACKEND_PROCESS -- Ollama API (127.0.0.1:11434) --> OLLAMA
+
+    EDITOR -- SSH / File Sync --> Ivy
+    GIT_CLIENT -- Git Push/Pull --> GITHUB
+    Ivy -- Git Clone/Fetch --> GITHUB
+
+    Ivy -- Backup Script (Planned) --> NFS_SMB
+
+    %% Styling Nodes
+    class USER,BROWSER,EDITOR,GIT_CLIENT dev
+    class GITHUB external
+    class PLEX,NFS_SMB storage
+    class VOL_PG,VOL_QDRANT,VOL_OLLAMA,GPU host
+
 ## Local Development Setup (on Host similar to Ivy)
 
 **Prerequisites:**
