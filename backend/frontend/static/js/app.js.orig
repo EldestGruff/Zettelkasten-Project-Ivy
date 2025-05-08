@@ -1,0 +1,619 @@
+// frontend/static/js/app.js
+
+document.addEventListener('DOMContentLoaded', () => {
+    console.log("DOM fully loaded and parsed");
+
+    // --- DOM Element References ---
+    // Sidebar
+    const notesListElement = document.getElementById('notes-list');
+    const showCreateFormBtn = document.getElementById('show-create-form-btn');
+    const createFormContainer = document.getElementById('note-create-form-container');
+    const createForm = document.getElementById('note-create-form');
+    const createContentInput = document.getElementById('create-content');
+    const createMemoryTypeInput = document.getElementById('create-memory-type');
+    const cancelCreateBtn = document.getElementById('cancel-create-btn');
+    const createErrorElement = document.getElementById('create-error');
+
+    // Main View
+    const noteDetailElement = document.getElementById('note-detail');
+    const noteDetailPlaceholder = document.getElementById('note-detail-placeholder');
+    const noteTitleElement = document.getElementById('note-title');
+    const noteContentDisplayElement = document.getElementById('note-content-display');
+    const noteMemoryTypeElement = document.getElementById('note-memory-type');
+    const noteArchivedElement = document.getElementById('note-archived');
+    const noteTagsElement = document.getElementById('note-tags');
+    const noteCreatedElement = document.getElementById('note-created');
+    const noteUpdatedElement = document.getElementById('note-updated');
+    const editNoteBtn = document.getElementById('edit-note-btn');
+    const archiveNoteBtn = document.getElementById('archive-note-btn');
+    const deleteNoteBtn = document.getElementById('delete-note-btn');
+    const outgoingLinksList = document.getElementById('note-links-outgoing');
+    const incomingLinksList = document.getElementById('note-links-incoming');
+    const searchInput = document.getElementById('search-input');
+    const searchBtn = document.getElementById('search-btn');
+    if (!searchBtn) { console.error("FATAL: Search button element not found!"); alert("Search button init failed!"); }
+    const searchResultsList = document.getElementById('search-results-list');
+    const searchErrorElement = document.getElementById('search-error');
+
+    // Edit Form
+    const editFormContainer = document.getElementById('note-edit-form-container');
+    const editForm = document.getElementById('note-edit-form');
+    const editNoteIdInput = document.getElementById('edit-note-id');
+    const editContentInput = document.getElementById('edit-content');
+    const editMemoryTypeInput = document.getElementById('edit-memory-type');
+    const cancelEditBtn = document.getElementById('cancel-edit-btn');
+    const editErrorElement = document.getElementById('edit-error');
+    const addTagInput = document.getElementById('add-tag-input');
+    const addTagBtn = document.getElementById('add-tag-btn');
+    const addTagErrorElement = document.getElementById('add-tag-error');
+    const linkTargetNoteIdInput = document.getElementById('link-target-note-id');
+    const createLinkBtn = document.getElementById('create-link-btn');
+    const createLinkErrorElement = document.getElementById('create-link-error');
+
+    // --- Global State (Simple) ---
+    let currentNote = null; // Store the currently displayed note object
+    let notesCache = []; // Simple cache for the notes list
+
+    // --- API Helper ---
+    async function apiCall(url, options = {}) {
+        try {
+            const response = await fetch(url, options);
+            if (!response.ok) {
+                let errorDetail = `HTTP error! status: ${response.status}`;
+                try {
+                    const errorJson = await response.json();
+                    errorDetail = errorJson.detail || errorDetail;
+                } catch (e) { /* Ignore */ }
+                throw new Error(errorDetail);
+            }
+            if (response.status === 204) {
+                return null;
+            }
+            return await response.json();
+        } catch (error) {
+            console.error(`API call failed: ${options.method || 'GET'} ${url}`, error);
+            throw error;
+        }
+    }
+
+    // --- UI Update Functions ---
+    function displayNoteList(notes) {
+        notesListElement.innerHTML = '';
+        if (notes.length === 0) {
+            notesListElement.innerHTML = '<li>No notes found. Create one!</li>';
+            return;
+        }
+        notesCache = notes;
+        notes.forEach(note => {
+            const listItem = document.createElement('li');
+            listItem.textContent = `[${note.memory_type}] ${note.id}`;
+            listItem.dataset.noteId = note.id;
+            if (currentNote && currentNote.id === note.id) {
+                listItem.classList.add('active');
+            }
+            listItem.addEventListener('click', () => handleNoteSelection(note.id));
+            notesListElement.appendChild(listItem);
+        });
+    }
+
+    function displayNoteDetail(note) {
+        currentNote = note;
+        noteTitleElement.textContent = `Note: ${note.id}`;
+        noteContentDisplayElement.textContent = note.content;
+        noteMemoryTypeElement.textContent = note.memory_type;
+        noteArchivedElement.textContent = note.is_archived ? 'Yes' : 'No';
+        noteCreatedElement.textContent = new Date(note.created_at).toLocaleString();
+        noteUpdatedElement.textContent = new Date(note.updated_at).toLocaleString();
+
+        noteTagsElement.innerHTML = '';
+        if (note.tags && note.tags.length > 0) {
+            note.tags.forEach(tag => {
+                const tagSpan = document.createElement('span');
+                tagSpan.textContent = tag.name;
+                const removeBtn = document.createElement('button');
+                removeBtn.textContent = 'x';
+                removeBtn.title = `Remove tag '${tag.name}'`;
+                removeBtn.dataset.tagId = tag.id;
+                removeBtn.onclick = () => handleRemoveTag(note.id, tag.id);
+                tagSpan.appendChild(removeBtn);
+                noteTagsElement.appendChild(tagSpan);
+            });
+        } else {
+            noteTagsElement.textContent = 'None';
+        }
+
+        archiveNoteBtn.textContent = note.is_archived ? 'Unarchive' : 'Archive';
+        archiveNoteBtn.dataset.noteId = note.id;
+        archiveNoteBtn.disabled = false;
+        deleteNoteBtn.dataset.noteId = note.id;
+        deleteNoteBtn.disabled = false;
+        addTagBtn.disabled = false;
+        createLinkBtn.disabled = false;
+        addTagInput.value = '';
+        linkTargetNoteIdInput.value = '';
+        hideError(addTagErrorElement);
+        hideError(createLinkErrorElement);
+
+        noteDetailElement.classList.remove('hidden');
+        editFormContainer.classList.add('hidden');
+        noteDetailPlaceholder.classList.add('hidden');
+
+        fetchAndDisplayLinks(note.id);
+        highlightSelectedNote(note.id);
+    }
+
+    function displayLinks(listElement, links) {
+        listElement.innerHTML = '';
+        if (links.length > 0) {
+            links.forEach(linkedNote => {
+                const li = document.createElement('li');
+                const link = document.createElement('a');
+                link.textContent = `[${linkedNote.memory_type}] ${linkedNote.id}`;
+                link.dataset.noteId = linkedNote.id;
+                link.onclick = (e) => { e.preventDefault(); handleNoteSelection(linkedNote.id); }; // Added preventDefault
+                li.appendChild(link);
+                listElement.appendChild(li);
+            });
+        } else {
+            listElement.innerHTML = '<li>None</li>';
+        }
+    }
+
+    // Simplified displaySearchResults with create elements
+    function displaySearchResults(results) {
+        searchResultsList.innerHTML = ''; // Clear loading/previous results
+
+        if (!results || results.length === 0) {
+            searchResultsList.innerHTML = '<li>No relevant notes found.</li>';
+            return;
+        }
+
+        results.forEach(result => {
+            const listItem = document.createElement('li');
+            const scoreFormatted = result.score.toFixed(3);
+
+            const link = document.createElement('a');
+            link.href = '#'; // Use # for placeholder link
+            link.dataset.noteId = result.id;
+            link.className = 'search-result-link'; // Add class if needed for styling
+            link.textContent = `[${result.memory_type}] Note ${result.id}`;
+            link.addEventListener('click', (event) => {
+                event.preventDefault();
+                handleNoteSelection(result.id);
+            });
+
+            const scoreSpan = document.createElement('span');
+            scoreSpan.textContent = ` (Score: ${scoreFormatted})`;
+
+            const br = document.createElement('br');
+
+            const dateSmall = document.createElement('small');
+            dateSmall.textContent = `Updated: ${new Date(result.updated_at).toLocaleDateString()}`;
+
+            listItem.appendChild(link);
+            listItem.appendChild(scoreSpan);
+            listItem.appendChild(br);
+            listItem.appendChild(dateSmall);
+
+            searchResultsList.appendChild(listItem);
+        });
+    }
+
+
+    function showCreateForm() {
+        createFormContainer.classList.remove('hidden');
+        noteDetailElement.classList.add('hidden');
+        noteDetailPlaceholder.classList.remove('hidden'); // Show placeholder when creating
+        editFormContainer.classList.add('hidden');
+        hideError(createErrorElement);
+        createForm.reset();
+        highlightSelectedNote(null);
+    }
+
+    function hideCreateForm() {
+        createFormContainer.classList.add('hidden');
+        if (!currentNote) {
+            noteDetailPlaceholder.classList.remove('hidden');
+        } else {
+            noteDetailElement.classList.remove('hidden');
+        }
+    }
+
+    function showEditForm() {
+        if (!currentNote) return;
+        editNoteIdInput.value = currentNote.id;
+        editContentInput.value = currentNote.content;
+        editMemoryTypeInput.value = currentNote.memory_type;
+        noteDetailElement.classList.add('hidden');
+        editFormContainer.classList.remove('hidden');
+        hideError(editErrorElement);
+    }
+
+    function hideEditForm() {
+        editFormContainer.classList.add('hidden');
+        if (currentNote) {
+             noteDetailElement.classList.remove('hidden');
+        } else {
+             noteDetailPlaceholder.classList.remove('hidden');
+        }
+    }
+
+    function showError(element, message) {
+        if(element) { // Add check if element exists
+            element.textContent = message;
+            element.classList.remove('hidden');
+        } else {
+            console.error("Attempted to show error on null element:", message);
+        }
+    }
+
+    function hideError(element) {
+         if(element) { // Add check if element exists
+            element.classList.add('hidden');
+            element.textContent = ''; // Clear previous message
+         }
+    }
+
+    function highlightSelectedNote(noteId) {
+        const listItems = notesListElement.querySelectorAll('li');
+        listItems.forEach(li => {
+            // Check dataset before comparing
+            if (li.dataset.noteId && li.dataset.noteId === noteId) {
+                li.classList.add('active');
+            } else {
+                li.classList.remove('active');
+            }
+        });
+    }
+
+    // --- Event Handlers ---
+    async function handleNoteSelection(noteId) {
+        console.log(`Selecting note detail for ID: ${noteId}`); // Changed log slightly
+        hideError(createErrorElement);
+        hideError(editErrorElement);
+        // Add safety check for placeholder if needed
+        if(noteDetailPlaceholder) hideError(noteDetailPlaceholder);
+
+        try {
+            const note = await apiCall(`/notes/${noteId}`);
+            if (note) {
+                 displayNoteDetail(note);
+            } else {
+                 console.warn(`Note ${noteId} not found when fetching detail.`);
+                 fetchAndDisplayNotes();
+                 if(noteDetailPlaceholder) noteDetailPlaceholder.classList.remove('hidden');
+                 noteDetailElement.classList.add('hidden');
+                 currentNote = null;
+                 highlightSelectedNote(null); // Deselect list
+            }
+        } catch (error) {
+            // Ensure placeholder exists before showing error
+            if(noteDetailPlaceholder) {
+                showError(noteDetailPlaceholder, `Error loading note: ${error.message}`);
+                noteDetailPlaceholder.classList.remove('hidden');
+            }
+            noteDetailElement.classList.add('hidden');
+            currentNote = null;
+            highlightSelectedNote(null); // Deselect list
+        }
+    }
+
+    async function handleCreateNote(event) {
+        event.preventDefault();
+        hideError(createErrorElement);
+        console.log("Submitting create note form...");
+        const noteData = {
+            content: createContentInput.value.trim(),
+            memory_type: createMemoryTypeInput.value
+        };
+        if (!noteData.content) {
+            showError(createErrorElement, "Content cannot be empty.");
+            return;
+        }
+        // Disable button during call? Add later if needed
+        try {
+            const createdNote = await apiCall('/notes/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(noteData)
+            });
+            console.log("Note created:", createdNote);
+            hideCreateForm();
+            await fetchAndDisplayNotes(); // Await list refresh
+            handleNoteSelection(createdNote.id); // Select new note
+        } catch (error) {
+            console.error("Error creating note:", error);
+            showError(createErrorElement, `Failed to create note: ${error.message}`);
+        }
+    }
+
+    async function handleEditNote(event) {
+        event.preventDefault();
+        hideError(editErrorElement);
+        console.log("Submitting edit note form...");
+        const noteId = editNoteIdInput.value;
+        const noteData = {
+            content: editContentInput.value.trim(),
+            memory_type: editMemoryTypeInput.value
+        };
+        if (!noteData.content) {
+             showError(editErrorElement, "Content cannot be empty.");
+            return;
+        }
+        // Disable button during call? Add later if needed
+        try {
+            const updatedNote = await apiCall(`/notes/${noteId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(noteData)
+            });
+            console.log("Note updated:", updatedNote);
+            displayNoteDetail(updatedNote); // Update UI directly
+            await fetchAndDisplayNotes(); // Refresh list in background
+        } catch (error) {
+            console.error("Error updating note:", error);
+            showError(editErrorElement, `Failed to update note: ${error.message}`);
+        }
+    }
+
+    // --- Search Handler ---
+    async function handleSearch() {
+        console.log("Type of handleSearch before listener:", typeof handleSearch);
+        if(typeof handleSearch !== 'function') { console.error("FATAL: handleSearch is not a function!"); alert("Search handler init failed!"); }
+        const query = searchInput.value.trim();
+        searchResultsList.innerHTML = '<li>Searching...</li>';
+        hideError(searchErrorElement);
+
+        if (!query) {
+            searchResultsList.innerHTML = '';
+            return;
+        }
+        console.log(`Performing search for: ${query}`);
+        // Disable button during search? Add later if needed
+        try {
+            const searchData = { query: query, limit: 15 };
+            const responseData = await apiCall('/search/similar', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(searchData)
+            });
+            displaySearchResults(responseData.results);
+        } catch (error) {
+            console.error("Error during search:", error);
+            showError(searchErrorElement, `Search failed: ${error.message}`);
+            searchResultsList.innerHTML = '<li>Search failed.</li>';
+        }
+    }
+
+    // --- Delete Note Handler ---
+    async function handleDeleteNote() {
+        console.log("handleDeleteNote entered. currentNote:", currentNote);
+        if (!currentNote) return;
+        const noteId = currentNote.id;
+        const confirmation1 = confirm(`PERMANENTLY DELETE NOTE ${noteId}? This cannot be undone.`);
+        if (!confirmation1) {
+             console.log("Delete confirmation 1 cancelled.");
+             return;
+        }
+        console.log("Delete confirmation 1 passed. Prompting for ID.");
+        const confirmation2 = prompt(`To confirm permanent deletion, please type the note ID (${noteId}) below:`);
+        console.log("Prompt input:", confirmation2, "Expected ID:", noteId);
+        if (confirmation2 !== noteId) {
+             console.log("Delete confirmation 2 failed (ID mismatch).");
+             alert("Confirmation failed. Note not deleted.");
+            return;
+        }
+        console.log(`Attempting to permanently delete note ${noteId}...`);
+        try {
+            deleteNoteBtn.disabled = true;
+            deleteNoteBtn.textContent = 'Deleting...';
+            await apiCall(`/notes/${noteId}/permanent`, { method: 'DELETE' });
+            console.log("Delete API call successful.");
+            alert(`Note ${noteId} permanently deleted.`);
+            currentNote = null;
+            noteDetailElement.classList.add('hidden');
+            // Check placeholder exists before modifying
+            if(noteDetailPlaceholder) {
+                noteDetailPlaceholder.textContent = `Note ${noteId} deleted. Select another note.`;
+                noteDetailPlaceholder.classList.remove('hidden');
+            }
+            archiveNoteBtn.disabled = true;
+            deleteNoteBtn.disabled = true;
+            addTagBtn.disabled = true;
+            createLinkBtn.disabled = true;
+            deleteNoteBtn.textContent = 'Delete'; // Reset text
+            await fetchAndDisplayNotes(); // Refresh list (use await)
+        } catch (error) {
+            console.error(`Error deleting note: ${error.message}`);
+            alert(`Error deleting note: ${error.message}`);
+            deleteNoteBtn.disabled = false; // Re-enable on error
+            deleteNoteBtn.textContent = 'Delete';
+        }
+    }
+
+    // --- Remove Tag Handler ---
+    async function handleRemoveTag(noteId, tagId) {
+        console.log(`Attempting to remove tag ${tagId} from note ${noteId}`);
+        if (!confirm(`Are you sure you want to remove tag ID ${tagId} from this note?`)) {
+            return;
+        }
+        try {
+            const updatedNote = await apiCall(`/notes/${noteId}/tags/${tagId}`, { method: 'DELETE' });
+            displayNoteDetail(updatedNote); // Refresh the detail view
+        } catch (error) {
+             alert(`Error removing tag: ${error.message}`);
+        }
+    }
+
+    // --- Add Tag Handler ---
+    async function handleAddTag() {
+        console.log("handleAddTag entered. currentNote:", currentNote);
+        if (!currentNote) return;
+        hideError(addTagErrorElement);
+        const noteId = currentNote.id;
+        const tagInput = addTagInput.value.trim();
+        if (!tagInput) {
+            showError(addTagErrorElement, "Enter an existing Tag ID.");
+            return;
+        }
+        const tagId = parseInt(tagInput, 10);
+        if (isNaN(tagId)) {
+            showError(addTagErrorElement, "Invalid input: Please enter a numeric Tag ID.");
+            return;
+        }
+        console.log(`Attempting to add tag ID ${tagId} to note ${noteId}`);
+        addTagBtn.disabled = true; // Disable button
+        addTagBtn.textContent = 'Adding...';
+        try {
+            const updatedNote = await apiCall(`/notes/${noteId}/tags/${tagId}`, { method: 'POST' });
+            console.log("Add tag API call successful.");
+            displayNoteDetail(updatedNote); // Refresh detail view
+            addTagInput.value = '';
+        } catch (error) {
+            console.error(`Error adding tag: ${error.message}`);
+            showError(addTagErrorElement, `Failed: ${error.message}`);
+        } finally {
+            addTagBtn.disabled = false; // Re-enable button
+            addTagBtn.textContent = 'Add Tag';
+        }
+    }
+
+    // --- Create Link Handler ---
+    async function handleCreateLink() {
+        console.log("handleCreateLink entered. currentNote:", currentNote);
+        if (!currentNote) return;
+        hideError(createLinkErrorElement);
+        const sourceNoteId = currentNote.id;
+        const targetNoteId = linkTargetNoteIdInput.value.trim();
+        if (!targetNoteId) {
+            showError(createLinkErrorElement, "Enter Target Note ID.");
+            return;
+        }
+        if (!/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(targetNoteId)) {
+             showError(createLinkErrorElement, "Invalid Target Note ID format (UUID expected).");
+             return;
+        }
+        if (sourceNoteId === targetNoteId) {
+             showError(createLinkErrorElement, "Cannot link a note to itself.");
+             return;
+        }
+        console.log(`Attempting to link note ${sourceNoteId} to ${targetNoteId}`);
+        createLinkBtn.disabled = true; // Disable button
+        createLinkBtn.textContent = 'Linking...';
+        try {
+            await apiCall(`/notes/${sourceNoteId}/links/${targetNoteId}`, { method: 'POST' });
+            console.log("Create link API call successful.");
+            await fetchAndDisplayLinks(sourceNoteId); // Refresh links (use await)
+            linkTargetNoteIdInput.value = '';
+        } catch (error) {
+            console.error("Error creating link:", error);
+            showError(createLinkErrorElement, `Failed: ${error.message}`);
+        } finally {
+            createLinkBtn.disabled = false; // Re-enable button
+            createLinkBtn.textContent = 'Create Link';
+        }
+    }
+
+    // --- Toggle Archive Handler ---
+    async function handleToggleArchive() {
+        console.log("handleToggleArchive entered. currentNote:", currentNote);
+        if (!currentNote) return;
+        const noteId = currentNote.id;
+        const isArchived = currentNote.is_archived;
+        const action = isArchived ? 'unarchive' : 'archive';
+        const confirmationMessage = `Are you sure you want to ${action} note ${noteId}?`;
+        console.log("About to show confirmation:", confirmationMessage);
+        if (!confirm(confirmationMessage)) {
+            console.log("Confirmation denied.");
+            return;
+        }
+        console.log("Confirmation accepted. Proceeding with API call...");
+        archiveNoteBtn.disabled = true; // Disable button
+        archiveNoteBtn.textContent = `${action.charAt(0).toUpperCase() + action.slice(1)}ing...`;
+        try {
+            const updatedNote = await apiCall(`/notes/${noteId}/${action}`, { method: 'POST' });
+            console.log("API call successful, updating UI...");
+            displayNoteDetail(updatedNote);
+            await fetchAndDisplayNotes(); // Refresh list (use await)
+        } catch (error) {
+            console.error(`Error in handleToggleArchive: ${error.message}`);
+            alert(`Error ${action}ing note: ${error.message}`);
+            archiveNoteBtn.disabled = false; // Re-enable on error
+            archiveNoteBtn.textContent = isArchived ? 'Unarchive' : 'Archive';
+        }
+    }
+
+    // --- Async Function Wrappers (Initial load, Links) ---
+    async function fetchAndDisplayNotes() {
+        console.log("Fetching notes list...");
+        try {
+            // Show placeholder only if no note selected
+            if(!currentNote) noteDetailPlaceholder.classList.remove('hidden');
+            const notes = await apiCall('/notes/?limit=200');
+            displayNoteList(notes);
+        } catch (error) {
+            console.error("Error fetching notes:", error);
+            notesListElement.innerHTML = `<li>Error loading notes: ${error.message}</li>`;
+        }
+    }
+
+     async function fetchAndDisplayLinks(noteId) {
+        outgoingLinksList.innerHTML = '<li>Loading...</li>';
+        incomingLinksList.innerHTML = '<li>Loading...</li>';
+        try {
+            const [outgoing, incoming] = await Promise.all([
+                apiCall(`/notes/${noteId}/links/outgoing`),
+                apiCall(`/notes/${noteId}/links/incoming`)
+            ]);
+            displayLinks(outgoingLinksList, outgoing);
+            displayLinks(incomingLinksList, incoming);
+        } catch (error) {
+            console.error(`Error fetching links for note ${noteId}:`, error);
+            outgoingLinksList.innerHTML = '<li>Error loading links</li>';
+            incomingLinksList.innerHTML = '<li>Error loading links</li>';
+        }
+     }
+
+    // --- Initial Setup & Event Listeners ---
+    // Remove previous debug logs for archive button listener
+    // console.log("Attempting to add listener to archiveNoteBtn:", archiveNoteBtn);
+    // if (archiveNoteBtn) {
+    //     archiveNoteBtn.addEventListener('click', handleToggleArchive);
+    //     console.log("Listener added to archiveNoteBtn");
+    // } else {
+    //     console.error("Archive button element not found!");
+    // }
+
+    // Add listeners (Ensure elements exist before adding listeners)
+    if (showCreateFormBtn) showCreateFormBtn.addEventListener('click', showCreateForm);
+    if (cancelCreateBtn) cancelCreateBtn.addEventListener('click', hideCreateForm);
+    if (createForm) createForm.addEventListener('submit', handleCreateNote);
+
+    if (editNoteBtn) editNoteBtn.addEventListener('click', showEditForm);
+    if (cancelEditBtn) cancelEditBtn.addEventListener('click', hideEditForm);
+    if (editForm) editForm.addEventListener('submit', handleEditNote);
+
+    if (archiveNoteBtn) archiveNoteBtn.addEventListener('click', handleToggleArchive);
+    if (deleteNoteBtn) deleteNoteBtn.addEventListener('click', handleDeleteNote);
+    if (addTagBtn) addTagBtn.addEventListener('click', handleAddTag);
+    if (createLinkBtn) createLinkBtn.addEventListener('click', handleCreateLink);
+
+    if (searchBtn) searchBtn.addEventListener('click', handleSearch);
+    
+    if (searchInput) searchInput.addEventListener('keypress', (event) => {
+        if (event.key === 'Enter' || event.keyCode === 13) {
+            event.preventDefault();
+            handleSearch();
+        }
+    });
+
+    // Disable buttons initially
+    if(archiveNoteBtn) archiveNoteBtn.disabled = true;
+    if(deleteNoteBtn) deleteNoteBtn.disabled = true;
+    if(addTagBtn) addTagBtn.disabled = true;
+    if(createLinkBtn) createLinkBtn.disabled = true;
+
+    // Initial data load
+    fetchAndDisplayNotes();
+
+}); // End of DOMContentLoaded

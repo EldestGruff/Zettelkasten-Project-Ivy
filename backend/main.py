@@ -25,8 +25,7 @@ from contextlib import asynccontextmanager # For lifespan events (preferred over
 # and then look for 'app' within it.
 from app.core.config import settings
 from app.api.deps import get_db, DbSession
-from app.api.routers import tags
-from app.api.routers import notes
+from app.api.routers import tags, notes, search
 from app.db.vector_store import ensure_collection_exists # Import the function
 from app.services.embedding import get_embedding 
 
@@ -59,6 +58,7 @@ app = FastAPI(
 # This makes all routes defined in tags.router available under the /tags prefix
 app.include_router(tags.router)
 app.include_router(notes.router)
+app.include_router(search.router)
 
 # --- Mount Static Files Directory ---
 # This line tells FastAPI to serve files from the 'frontend/static' directory

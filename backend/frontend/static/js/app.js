@@ -1,229 +1,518 @@
 // frontend/static/js/app.js
-
 document.addEventListener('DOMContentLoaded', () => {
-    console.log("DOM fully loaded and parsed");
-
-    // --- DOM Element References ---
-    // Sidebar
-    const notesListElement = document.getElementById('notes-list');
-    const showCreateFormBtn = document.getElementById('show-create-form-btn');
+    // === Element References ==================================================
+    const notesList = document.getElementById('notes-list');
     const createFormContainer = document.getElementById('note-create-form-container');
-    const createForm = document.getElementById('note-create-form');
-    const createContentInput = document.getElementById('create-content');
-    const createMemoryTypeInput = document.getElementById('create-memory-type');
-    const cancelCreateBtn = document.getElementById('cancel-create-btn');
-    const createErrorElement = document.getElementById('create-error');
-
-    // Main View
+    const editFormContainer = document.getElementById('note-edit-form-container');
     const noteDetailElement = document.getElementById('note-detail');
     const noteDetailPlaceholder = document.getElementById('note-detail-placeholder');
-    const noteTitleElement = document.getElementById('note-title');
-    const noteContentDisplayElement = document.getElementById('note-content-display');
-    const noteMemoryTypeElement = document.getElementById('note-memory-type');
-    const noteArchivedElement = document.getElementById('note-archived');
-    const noteTagsElement = document.getElementById('note-tags');
-    const noteCreatedElement = document.getElementById('note-created');
-    const noteUpdatedElement = document.getElementById('note-updated');
-    const editNoteBtn = document.getElementById('edit-note-btn');
-    const archiveNoteBtn = document.getElementById('archive-note-btn');
-    const deleteNoteBtn = document.getElementById('delete-note-btn');
-    const outgoingLinksList = document.getElementById('note-links-outgoing');
-    const incomingLinksList = document.getElementById('note-links-incoming');
 
-    // Edit Form
-    const editFormContainer = document.getElementById('note-edit-form-container');
-    const editForm = document.getElementById('note-edit-form');
-    const editNoteIdInput = document.getElementById('edit-note-id');
-    const editContentInput = document.getElementById('edit-content');
-    const editMemoryTypeInput = document.getElementById('edit-memory-type');
-    const cancelEditBtn = document.getElementById('cancel-edit-btn');
-    const editErrorElement = document.getElementById('edit-error');
-    const addTagInput = document.getElementById('add-tag-input');
-    const addTagBtn = document.getElementById('add-tag-btn');
-    const addTagErrorElement = document.getElementById('add-tag-error');
-    const linkTargetNoteIdInput = document.getElementById('link-target-note-id');
-    const createLinkBtn = document.getElementById('create-link-btn');
-    const createLinkErrorElement = document.getElementById('create-link-error');
-    // --- Global State (Simple) ---
-    let currentNote = null; // Store the currently displayed note object
-    let notesCache = []; // Simple cache for the notes list
+    // More specific elements grouped
+    const elements = {
+        create: {
+            form: document.getElementById('note-create-form'),
+            contentInput: document.getElementById('create-content'),
+            memoryTypeSelect: document.getElementById('create-memory-type'),
+            error: document.getElementById('create-error'),
+            cancelBtn: document.getElementById('cancel-create-btn')
+        },
+        edit: {
+            form: document.getElementById('note-edit-form'),
+            noteIdInput: document.getElementById('edit-note-id'),
+            contentInput: document.getElementById('edit-content'),
+            memoryTypeSelect: document.getElementById('edit-memory-type'),
+            error: document.getElementById('edit-error'),
+            cancelBtn: document.getElementById('cancel-edit-btn')
+        },
+        search: {
+            input: document.getElementById('search-input'),
+            results: document.getElementById('search-results-list'),
+            error: document.getElementById('search-error'),
+            btn: document.getElementById('search-btn')
+        },
+        tags: {
+            container: document.getElementById('note-tags'), // Added for event delegation
+            input: document.getElementById('add-tag-input'),
+            error: document.getElementById('add-tag-error'),
+            btn: document.getElementById('add-tag-btn')
+        },
+        links: {
+            outgoingList: document.getElementById('note-links-outgoing'),
+            incomingList: document.getElementById('note-links-incoming'),
+            targetInput: document.getElementById('link-target-note-id'),
+            error: document.getElementById('create-link-error'),
+            btn: document.getElementById('create-link-btn')
+        },
+        buttons: {
+            showCreateForm: document.getElementById('show-create-form-btn'),
+            editNote: document.getElementById('edit-note-btn'),
+            archiveNote: document.getElementById('archive-note-btn'),
+            deleteNote: document.getElementById('delete-note-btn')
+        },
+        noteFields: {
+            title: document.getElementById('note-title'),
+            contentDisplay: document.getElementById('note-content-display'),
+            memoryType: document.getElementById('note-memory-type'),
+            archived: document.getElementById('note-archived'),
+            created: document.getElementById('note-created'),
+            updated: document.getElementById('note-updated')
+        }
+    };
 
-    // --- API Helper ---
-    // Basic helper for fetch calls, handling errors and JSON parsing
-    async function apiCall(url, options = {}) {
+    // === State Management ===================================================
+    let currentNote = null;
+    let notesCache = [];
+
+    // === API Utilities =======================================================
+    const apiCall = async (url, options = {}) => {
+        const fetchOptions = {
+            ...options,
+            headers: {
+                'Content-Type': 'application/json',
+                ...(options.headers || {}),
+            },
+        };
         try {
-            const response = await fetch(url, options);
+            const response = await fetch(url, fetchOptions);
             if (!response.ok) {
                 let errorDetail = `HTTP error! status: ${response.status}`;
                 try {
-                    // Try to get more detail from API error response
                     const errorJson = await response.json();
                     errorDetail = errorJson.detail || errorDetail;
-                } catch (e) { /* Ignore if response body isn't JSON */ }
+                } catch (e) { /* Ignore */ }
                 throw new Error(errorDetail);
             }
-            // Handle 204 No Content responses specifically
             if (response.status === 204) {
-                return null; // Or return a specific marker if needed
+                return null;
             }
             return await response.json();
         } catch (error) {
-            console.error(`API call failed: ${options.method || 'GET'} ${url}`, error);
-            throw error; // Re-throw for specific handlers
+            console.error(`API call failed: ${fetchOptions.method || 'GET'} ${url}`, error);
+            throw error;
         }
-    }
+    };
 
-    // --- UI Update Functions ---
-    function displayNoteList(notes) {
-        notesListElement.innerHTML = ''; // Clear previous list
-        if (notes.length === 0) {
-            notesListElement.innerHTML = '<li>No notes found. Create one!</li>';
+    // === DOM Utilities ======================================================
+    const domHelper = {
+        toggleVisibility: (element, visible) => {
+            if (element) element.classList.toggle('hidden', !visible);
+        },
+        clearChildren: (element) => {
+            if (element) element.innerHTML = '';
+        },
+        handleError: (element, message = '') => {
+            if (!element) return;
+            element.textContent = message;
+            domHelper.toggleVisibility(element, !!message);
+        },
+        createListItem: (note, isActive = false) => {
+            const li = document.createElement('li');
+            li.className = isActive ? 'active' : '';
+            li.dataset.noteId = note.id;
+            const memoryTypeSpan = document.createElement('span');
+            memoryTypeSpan.className = 'memory-type';
+            memoryTypeSpan.textContent = `[${note.memory_type}]`;
+            const noteIdSpan = document.createElement('span');
+            noteIdSpan.className = 'note-id';
+            noteIdSpan.textContent = ` ${note.id}`;
+            const noteDate = document.createElement('time');
+            noteDate.className = 'note-date';
+            noteDate.textContent = new Date(note.updated_at).toLocaleDateString();
+            li.appendChild(memoryTypeSpan);
+            li.appendChild(noteIdSpan);
+            li.appendChild(noteDate);
+            return li;
+        },
+        createLinkListItem: (linkedNote) => {
+            const li = document.createElement('li');
+            const a = document.createElement('a');
+            a.href = '#';
+            a.dataset.noteId = linkedNote.id;
+            a.textContent = `[${linkedNote.memory_type}] ${linkedNote.id}`;
+            a.addEventListener('click', (e) => {
+                e.preventDefault();
+                handleNoteSelection(linkedNote.id);
+            });
+            li.appendChild(a);
+            return li;
+        }
+    };
+
+    // === Display Logic Specific to Search Results with Score ===
+    const displaySearchResultsWithScore = (resultsData) => {
+        const searchResultsList = elements.search.results;
+        domHelper.clearChildren(searchResultsList);
+
+        if (!resultsData || resultsData.length === 0) {
+            const noResultsLi = document.createElement('li');
+            noResultsLi.className = 'search-status';
+            noResultsLi.textContent = 'No relevant notes found.';
+            searchResultsList.appendChild(noResultsLi);
             return;
         }
-        notesCache = notes; // Update cache
-        notes.forEach(note => {
+
+        resultsData.forEach(result => {
             const listItem = document.createElement('li');
-            // Simple preview - maybe use first line of content later
-            listItem.textContent = `[${note.memory_type}] ${note.id}`; // Example text
-            listItem.dataset.noteId = note.id;
-            // Highlight if it's the currently selected note
-            if (currentNote && currentNote.id === note.id) {
-                listItem.classList.add('active');
+            listItem.className = 'search-result-item';
+
+            let scoreFormatted = '';
+            if (typeof result.score === 'number') {
+                scoreFormatted = result.score.toFixed(3);
             }
-            listItem.addEventListener('click', () => handleNoteSelection(note.id));
-            notesListElement.appendChild(listItem);
-        });
-    }
 
-function displayNoteDetail(note) {
-    currentNote = note; // Update global state
-
-    // Populate static fields
-    noteTitleElement.textContent = `Note: ${note.id}`;
-    noteContentDisplayElement.textContent = note.content;
-    noteMemoryTypeElement.textContent = note.memory_type;
-    noteArchivedElement.textContent = note.is_archived ? 'Yes' : 'No';
-    noteCreatedElement.textContent = new Date(note.created_at).toLocaleString();
-    noteUpdatedElement.textContent = new Date(note.updated_at).toLocaleString();
-
-    // Populate Tags (with remove buttons)
-    noteTagsElement.innerHTML = ''; // Clear previous tags
-    if (note.tags && note.tags.length > 0) {
-        note.tags.forEach(tag => {
-            const tagSpan = document.createElement('span');
-            tagSpan.textContent = tag.name;
-            const removeBtn = document.createElement('button');
-            removeBtn.textContent = 'x';
-            removeBtn.title = `Remove tag '${tag.name}'`;
-            removeBtn.dataset.tagId = tag.id;
-            removeBtn.onclick = () => handleRemoveTag(note.id, tag.id);
-            tagSpan.appendChild(removeBtn);
-            noteTagsElement.appendChild(tagSpan);
-        });
-    } else {
-        noteTagsElement.textContent = 'None';
-    }
-
-    // Update Archive button text/state
-    archiveNoteBtn.textContent = note.is_archived ? 'Unarchive' : 'Archive';
-    archiveNoteBtn.dataset.noteId = note.id; // Store ID for handler
-    archiveNoteBtn.disabled = false; // Enable button
-
-    // Store ID for delete button handler
-    deleteNoteBtn.dataset.noteId = note.id;
-    deleteNoteBtn.disabled = false; // Enable button
-
-    // Enable Add Tag / Create Link buttons
-    addTagBtn.disabled = false;
-    createLinkBtn.disabled = false;
-    addTagInput.value = ''; // Clear inputs
-    linkTargetNoteIdInput.value = '';
-    hideError(addTagErrorElement); // Hide errors
-    hideError(createLinkErrorElement);
-
-    // Show/hide sections
-    noteDetailElement.classList.remove('hidden');
-    editFormContainer.classList.add('hidden'); // Hide edit form if it was open
-    noteDetailPlaceholder.classList.add('hidden');
-
-    // Fetch and display links
-    fetchAndDisplayLinks(note.id);
-
-    // Highlight selected note in the list
-    highlightSelectedNote(note.id);
-}
-
-    function displayLinks(listElement, links) {
-         listElement.innerHTML = ''; // Clear loading/previous
-         if (links.length > 0) {
-            links.forEach(linkedNote => {
-                const li = document.createElement('li');
-                const link = document.createElement('a');
-                link.textContent = `[${linkedNote.memory_type}] ${linkedNote.id}`; // Display minimal info
-                link.dataset.noteId = linkedNote.id;
-                link.onclick = () => handleNoteSelection(linkedNote.id); // Navigate on click
-                li.appendChild(link);
-                listElement.appendChild(li);
+            const link = document.createElement('a');
+            link.href = '#';
+            link.dataset.noteId = result.id;
+            link.className = 'search-result-link';
+            link.textContent = `[${result.memory_type}] Note ${result.id}`;
+            link.addEventListener('click', (event) => {
+                event.preventDefault();
+                handleNoteSelection(result.id);
             });
-         } else {
-            listElement.innerHTML = '<li>None</li>';
-         }
-    }
+            listItem.appendChild(link);
 
-    function showCreateForm() {
-        createFormContainer.classList.remove('hidden');
-        noteDetailElement.classList.add('hidden');
-        noteDetailPlaceholder.classList.add('hidden');
-        editFormContainer.classList.add('hidden');
-        hideError(createErrorElement);
-        createForm.reset(); // Clear form fields
-        highlightSelectedNote(null); // Deselect notes list
-    }
+            if (scoreFormatted) {
+                const scoreSpan = document.createElement('span');
+                scoreSpan.className = 'search-result-score';
+                scoreSpan.textContent = ` (Score: ${scoreFormatted})`;
+                listItem.appendChild(scoreSpan);
+            }
+            
+            const br = document.createElement('br');
+            listItem.appendChild(br);
 
-    function hideCreateForm() {
-        createFormContainer.classList.add('hidden');
-        // Show placeholder only if no note is selected
-        if (!currentNote) {
-            noteDetailPlaceholder.classList.remove('hidden');
+            const dateSmall = document.createElement('small');
+            dateSmall.className = 'search-result-date';
+            dateSmall.textContent = `Updated: ${new Date(result.updated_at).toLocaleDateString()}`;
+            listItem.appendChild(dateSmall);
+
+            searchResultsList.appendChild(listItem);
+        });
+    };
+
+
+    // === Note Display Logic ==================================================
+    const displayNoteDetail = (note) => {
+        currentNote = note;
+
+        if (elements.noteFields.title) elements.noteFields.title.textContent = `Note: ${note.id}`;
+        if (elements.noteFields.contentDisplay) elements.noteFields.contentDisplay.textContent = note.content;
+        if (elements.noteFields.memoryType) elements.noteFields.memoryType.textContent = note.memory_type;
+        if (elements.noteFields.archived) elements.noteFields.archived.textContent = note.is_archived ? 'Yes' : 'No';
+        if (elements.noteFields.created) elements.noteFields.created.textContent = new Date(note.created_at).toLocaleString();
+        if (elements.noteFields.updated) elements.noteFields.updated.textContent = new Date(note.updated_at).toLocaleString();
+
+        domHelper.clearChildren(elements.tags.container);
+        if (note.tags && note.tags.length > 0) {
+            note.tags.forEach(tag => {
+                const tagSpan = document.createElement('span');
+                tagSpan.className = 'tag';
+                tagSpan.textContent = tag.name;
+                const removeBtn = document.createElement('button');
+                removeBtn.className = 'remove-tag';
+                removeBtn.textContent = '×';
+                removeBtn.title = `Remove tag '${tag.name}'`;
+                removeBtn.dataset.tagId = tag.id;
+                tagSpan.appendChild(removeBtn);
+                elements.tags.container.appendChild(tagSpan);
+            });
         } else {
-            noteDetailElement.classList.remove('hidden');
+            if (elements.tags.container) elements.tags.container.textContent = 'None';
         }
-    }
 
-    function showEditForm() {
-        if (!currentNote) return; // Should not happen if edit btn is clicked correctly
-
-        // Populate form
-        editNoteIdInput.value = currentNote.id;
-        editContentInput.value = currentNote.content;
-        editMemoryTypeInput.value = currentNote.memory_type;
-
-        // Show/hide sections
-        noteDetailElement.classList.add('hidden');
-        editFormContainer.classList.remove('hidden');
-        hideError(editErrorElement);
-    }
-
-    function hideEditForm() {
-        editFormContainer.classList.add('hidden');
-        // Show detail view for the current note again
-        if (currentNote) {
-             noteDetailElement.classList.remove('hidden');
-        } else {
-             noteDetailPlaceholder.classList.remove('hidden');
+        if (elements.buttons.archiveNote) {
+            elements.buttons.archiveNote.disabled = false;
+            elements.buttons.archiveNote.textContent = note.is_archived ? 'Unarchive' : 'Archive';
         }
-    }
+        if (elements.buttons.deleteNote) elements.buttons.deleteNote.disabled = false;
+        if (elements.buttons.editNote) elements.buttons.editNote.disabled = false;
+        if (elements.tags.btn) elements.tags.btn.disabled = false;
+        if (elements.links.btn) elements.links.btn.disabled = false;
 
-    function showError(element, message) {
-        element.textContent = message;
-        element.classList.remove('hidden');
-    }
-    function hideError(element) {
-        element.classList.add('hidden');
-    }
+        domHelper.toggleVisibility(noteDetailElement, true);
+        domHelper.toggleVisibility(noteDetailPlaceholder, false);
+        domHelper.toggleVisibility(editFormContainer, false);
+        domHelper.toggleVisibility(createFormContainer, false);
 
-    function highlightSelectedNote(noteId) {
-        const listItems = notesListElement.querySelectorAll('li');
+        fetchAndDisplayLinks(note.id);
+        highlightSelectedNote(note.id);
+    };
+
+    const handleMissingNote = (noteId) => {
+        domHelper.handleError(noteDetailPlaceholder, `Note ID ${noteId} not found or could not be loaded.`);
+        domHelper.toggleVisibility(noteDetailElement, false);
+        domHelper.toggleVisibility(noteDetailPlaceholder, true);
+        currentNote = null;
+        highlightSelectedNote(null);
+        if (elements.buttons.archiveNote) elements.buttons.archiveNote.disabled = true;
+        if (elements.buttons.deleteNote) elements.buttons.deleteNote.disabled = true;
+        if (elements.buttons.editNote) elements.buttons.editNote.disabled = true;
+        if (elements.tags.btn) elements.tags.btn.disabled = true;
+        if (elements.links.btn) elements.links.btn.disabled = true;
+    };
+
+    // === Event Handlers ======================================================
+    const handleNoteSelection = async (noteId) => {
+        domHelper.handleError(noteDetailPlaceholder);
+        try {
+            const note = await apiCall(`/notes/${noteId}`);
+            note ? displayNoteDetail(note) : handleMissingNote(noteId);
+        } catch (error) {
+            handleMissingNote(noteId);
+            console.error(`Error selecting note ${noteId}:`, error);
+        }
+    };
+
+    const handleCreateNote = async (event) => {
+        event.preventDefault();
+        const { contentInput, memoryTypeSelect, error: errorElement, form } = elements.create;
+        domHelper.handleError(errorElement);
+        const content = contentInput.value.trim();
+        if (!content) {
+            return domHelper.handleError(errorElement, 'Content cannot be empty');
+        }
+        try {
+            const newNote = await apiCall('/notes/', {
+                method: 'POST',
+                body: JSON.stringify({
+                    content: content,
+                    memory_type: memoryTypeSelect.value
+                })
+            });
+            form.reset();
+            domHelper.toggleVisibility(createFormContainer, false);
+            await fetchAndDisplayNotes();
+            if (newNote && newNote.id) {
+                handleNoteSelection(newNote.id);
+            }
+        } catch (apiError) {
+            domHelper.handleError(errorElement, `Creation failed: ${apiError.message}`);
+        }
+    };
+
+    const handleEditNote = async (event) => {
+        event.preventDefault();
+        const { noteIdInput, contentInput, memoryTypeSelect, error: errorElement, form } = elements.edit;
+        domHelper.handleError(errorElement);
+        const noteId = noteIdInput.value;
+        const content = contentInput.value.trim();
+        if (!content) {
+            return domHelper.handleError(errorElement, 'Content cannot be empty.');
+        }
+        try {
+            const updatedNote = await apiCall(`/notes/${noteId}`, {
+                method: 'PATCH',
+                body: JSON.stringify({
+                    content: content,
+                    memory_type: memoryTypeSelect.value
+                })
+            });
+            form.reset();
+            domHelper.toggleVisibility(editFormContainer, false);
+            domHelper.toggleVisibility(noteDetailElement, true);
+            displayNoteDetail(updatedNote);
+            await fetchAndDisplayNotes();
+        } catch (apiError) {
+            domHelper.handleError(errorElement, `Update failed: ${apiError.message}`);
+        }
+    };
+
+    const handleSearch = async () => {
+        const { input, results, error: errorElement } = elements.search;
+        domHelper.handleError(errorElement); // Clear previous search errors
+        domHelper.clearChildren(results); // Clear previous results immediately
+
+        const query = input.value.trim();
+        if (!query) {
+             // Optionally display a message like "Please enter a search term" or just do nothing
+            return;
+        }
+
+        // Display "Searching..." message
+        const searchingLi = document.createElement('li');
+        searchingLi.className = 'search-status';
+        searchingLi.textContent = 'Searching...';
+        results.appendChild(searchingLi);
+
+        try {
+            const responseData = await apiCall('/search/similar', {
+                method: 'POST',
+                body: JSON.stringify({ query, limit: 15 })
+            });
+            
+            // displaySearchResultsWithScore will clear the "Searching..." message
+            if (responseData && responseData.results) {
+                displaySearchResultsWithScore(responseData.results);
+            } else {
+                // Handle case where responseData or responseData.results is missing
+                displaySearchResultsWithScore([]); // Will show "No relevant notes found"
+            }
+        } catch (apiError) {
+            domHelper.handleError(errorElement, `Search failed: ${apiError.message}`);
+            domHelper.clearChildren(results); // Clear "Searching..."
+            const searchFailedLi = document.createElement('li');
+            searchFailedLi.className = 'search-error'; // Use a specific class for search errors
+            searchFailedLi.textContent = 'Search failed. Please try again.';
+            results.appendChild(searchFailedLi);
+        }
+    };
+
+
+    const handleAddTag = async () => {
+        if (!currentNote) return domHelper.handleError(elements.tags.error, 'No note selected.');
+        const { input, error: errorElement, btn } = elements.tags;
+        domHelper.handleError(errorElement);
+        const tagNameOrId = input.value.trim();
+        if (!tagNameOrId) {
+            return domHelper.handleError(errorElement, 'Tag name or ID cannot be empty.');
+        }
+        btn.disabled = true;
+        btn.textContent = 'Adding...';
+        try {
+            const updatedNote = await apiCall(`/notes/${currentNote.id}/tags/${tagNameOrId}`, {
+                method: 'POST'
+            });
+            input.value = '';
+            displayNoteDetail(updatedNote);
+        } catch (apiError) {
+            domHelper.handleError(errorElement, `Failed to add tag: ${apiError.message}`);
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Add Tag';
+        }
+    };
+
+    const handleRemoveTag = async (noteId, tagId) => {
+        if (!confirm(`Are you sure you want to remove tag ID ${tagId} from this note?`)) return;
+        try {
+            const updatedNote = await apiCall(`/notes/${noteId}/tags/${tagId}`, {
+                method: 'DELETE'
+            });
+            displayNoteDetail(updatedNote);
+        } catch (error) {
+            alert(`Error removing tag: ${error.message}`);
+        }
+    };
+
+    const handleCreateLink = async () => {
+        if (!currentNote) return domHelper.handleError(elements.links.error, 'No source note selected.');
+        const { targetInput, error: errorElement, btn } = elements.links;
+        domHelper.handleError(errorElement);
+        const targetNoteId = targetInput.value.trim();
+        if (!targetNoteId) {
+            return domHelper.handleError(errorElement, 'Target Note ID cannot be empty.');
+        }
+        if (targetNoteId === currentNote.id) {
+            return domHelper.handleError(errorElement, 'Cannot link a note to itself.');
+        }
+        if (!/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(targetNoteId)) {
+            return domHelper.handleError(errorElement, "Invalid Target Note ID format (UUID expected).");
+        }
+        btn.disabled = true;
+        btn.textContent = 'Linking...';
+        try {
+            await apiCall(`/notes/${currentNote.id}/links/${targetNoteId}`, {
+                method: 'POST'
+            });
+            targetInput.value = '';
+            await fetchAndDisplayLinks(currentNote.id);
+        } catch (apiError) {
+            domHelper.handleError(errorElement, `Failed to create link: ${apiError.message}`);
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Create Link';
+        }
+    };
+
+    const handleArchiveNote = async () => {
+        if (!currentNote) return;
+        const action = currentNote.is_archived ? 'unarchive' : 'archive';
+        if (!confirm(`Are you sure you want to ${action} note ${currentNote.id}?`)) return;
+        const btn = elements.buttons.archiveNote;
+        btn.disabled = true;
+        btn.textContent = `${action.charAt(0).toUpperCase() + action.slice(1)}ing...`;
+        try {
+            const updatedNote = await apiCall(`/notes/${currentNote.id}/${action}`, {
+                method: 'POST'
+            });
+            displayNoteDetail(updatedNote);
+            await fetchAndDisplayNotes();
+        } catch (error) {
+            alert(`Error ${action}ing note: ${error.message}`);
+            btn.textContent = currentNote.is_archived ? 'Unarchive' : 'Archive'; // Reset on error
+        } finally {
+            if (currentNote) btn.disabled = false;
+        }
+    };
+
+    const handleDeleteNote = async () => {
+        if (!currentNote) return;
+        const noteIdToDelete = currentNote.id;
+        const confirmation = prompt(`To PERMANENTLY DELETE Note ${noteIdToDelete}, please type its ID below:`);
+        if (confirmation !== noteIdToDelete) {
+            alert('Deletion cancelled or ID mismatch.');
+            return;
+        }
+        if (!confirm('FINAL WARNING: This action is irreversible. Are you sure?')) return;
+        const btn = elements.buttons.deleteNote;
+        btn.disabled = true;
+        btn.textContent = 'Deleting...';
+        try {
+            await apiCall(`/notes/${noteIdToDelete}/permanent`, {
+                method: 'DELETE'
+            });
+            alert(`Note ${noteIdToDelete} permanently deleted.`);
+            currentNote = null;
+            domHelper.toggleVisibility(noteDetailElement, false);
+            domHelper.handleError(noteDetailPlaceholder, `Note ${noteIdToDelete} deleted. Select another note or create a new one.`);
+            domHelper.toggleVisibility(noteDetailPlaceholder, true);
+            if (elements.buttons.archiveNote) elements.buttons.archiveNote.disabled = true;
+            if (elements.buttons.deleteNote) elements.buttons.deleteNote.disabled = true;
+            if (elements.buttons.editNote) elements.buttons.editNote.disabled = true;
+            if (elements.tags.btn) elements.tags.btn.disabled = true;
+            if (elements.links.btn) elements.links.btn.disabled = true;
+            await fetchAndDisplayNotes();
+        } catch (error) {
+            alert(`Error deleting note: ${error.message}`);
+        } finally {
+            btn.textContent = 'Delete';
+            btn.disabled = !currentNote; // Keep disabled if note was successfully deleted
+        }
+    };
+
+    // === Helper Functions ===================================================
+    const fetchAndDisplayLinks = async (noteId) => {
+        if (!elements.links.outgoingList || !elements.links.incomingList) return;
+        domHelper.clearChildren(elements.links.outgoingList);
+        elements.links.outgoingList.innerHTML = '<li>Loading outgoing links...</li>';
+        domHelper.clearChildren(elements.links.incomingList);
+        elements.links.incomingList.innerHTML = '<li>Loading incoming links...</li>';
+        try {
+            const [outgoing, incoming] = await Promise.all([
+                apiCall(`/notes/${noteId}/links/outgoing`),
+                apiCall(`/notes/${noteId}/links/incoming`)
+            ]);
+            domHelper.clearChildren(elements.links.outgoingList);
+            if (outgoing && outgoing.length > 0) {
+                outgoing.forEach(link => elements.links.outgoingList.appendChild(domHelper.createLinkListItem(link)));
+            } else {
+                elements.links.outgoingList.innerHTML = '<li>None</li>';
+            }
+            domHelper.clearChildren(elements.links.incomingList);
+            if (incoming && incoming.length > 0) {
+                incoming.forEach(link => elements.links.incomingList.appendChild(domHelper.createLinkListItem(link)));
+            } else {
+                elements.links.incomingList.innerHTML = '<li>None</li>';
+            }
+        } catch (error) {
+            console.error(`Error fetching links for note ${noteId}:`, error);
+            if (elements.links.outgoingList) elements.links.outgoingList.innerHTML = '<li>Error loading links</li>';
+            if (elements.links.incomingList) elements.links.incomingList.innerHTML = '<li>Error loading links</li>';
+        }
+    };
+
+    const highlightSelectedNote = (noteId) => {
+        const listItems = notesList.querySelectorAll('li[data-note-id]');
         listItems.forEach(li => {
             if (li.dataset.noteId === noteId) {
                 li.classList.add('active');
@@ -231,379 +520,106 @@ function displayNoteDetail(note) {
                 li.classList.remove('active');
             }
         });
-    }
+    };
 
-    // --- Event Handlers ---
-    async function handleNoteSelection(noteId) {
-        console.log(`Fetching note detail for ID: ${noteId}`);
-        hideError(createErrorElement); // Hide errors if switching view
-        hideError(editErrorElement);
-        try {
-            const note = await apiCall(`/notes/${noteId}`);
-            if (note) {
-                 displayNoteDetail(note);
+    // === Initialization =====================================================
+    const initializeEventListeners = () => {
+        elements.buttons.showCreateForm?.addEventListener('click', () => {
+            domHelper.toggleVisibility(createFormContainer, true);
+            domHelper.toggleVisibility(noteDetailElement, false);
+            domHelper.toggleVisibility(editFormContainer, false);
+            domHelper.toggleVisibility(noteDetailPlaceholder, true);
+            elements.create.form.reset();
+            domHelper.handleError(elements.create.error);
+            highlightSelectedNote(null);
+        });
+        elements.create.cancelBtn?.addEventListener('click', () => {
+            domHelper.toggleVisibility(createFormContainer, false);
+            if (currentNote) {
+                domHelper.toggleVisibility(noteDetailElement, true);
+                domHelper.toggleVisibility(noteDetailPlaceholder, false);
             } else {
-                 // Handle case where note might have been deleted/archived between list load and click
-                 console.warn(`Note ${noteId} not found when fetching detail.`);
-                 fetchAndDisplayNotes(); // Refresh list
-                 noteDetailPlaceholder.classList.remove('hidden');
-                 noteDetailElement.classList.add('hidden');
-                 currentNote = null;
+                domHelper.toggleVisibility(noteDetailPlaceholder, true);
+            }
+        });
+        elements.create.form?.addEventListener('submit', handleCreateNote);
+        elements.buttons.editNote?.addEventListener('click', () => {
+            if (!currentNote) return;
+            elements.edit.noteIdInput.value = currentNote.id;
+            elements.edit.contentInput.value = currentNote.content;
+            elements.edit.memoryTypeSelect.value = currentNote.memory_type;
+            domHelper.toggleVisibility(editFormContainer, true);
+            domHelper.toggleVisibility(noteDetailElement, false);
+            domHelper.handleError(elements.edit.error);
+        });
+        elements.edit.cancelBtn?.addEventListener('click', () => {
+            domHelper.toggleVisibility(editFormContainer, false);
+            if (currentNote) { // Only show detail if a note was being edited
+                domHelper.toggleVisibility(noteDetailElement, true);
+            } else { // Otherwise, ensure placeholder is visible
+                domHelper.toggleVisibility(noteDetailPlaceholder, true);
+            }
+        });
+        elements.edit.form?.addEventListener('submit', handleEditNote);
+        notesList?.addEventListener('click', (event) => {
+            const listItem = event.target.closest('li[data-note-id]');
+            if (listItem && listItem.dataset.noteId) {
+                handleNoteSelection(listItem.dataset.noteId);
+            }
+        });
+        elements.search.btn?.addEventListener('click', handleSearch);
+        elements.search.input?.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                handleSearch();
+            }
+        });
+        elements.tags.btn?.addEventListener('click', handleAddTag);
+        elements.tags.container?.addEventListener('click', (event) => {
+            if (event.target.classList.contains('remove-tag')) {
+                const tagId = event.target.dataset.tagId;
+                if (currentNote && tagId) {
+                    handleRemoveTag(currentNote.id, tagId);
+                }
+            }
+        });
+        elements.links.btn?.addEventListener('click', handleCreateLink);
+        elements.buttons.archiveNote?.addEventListener('click', handleArchiveNote);
+        elements.buttons.deleteNote?.addEventListener('click', handleDeleteNote);
+    };
+
+    const initializeState = () => {
+        domHelper.toggleVisibility(createFormContainer, false);
+        domHelper.toggleVisibility(editFormContainer, false);
+        domHelper.toggleVisibility(noteDetailElement, false);
+        domHelper.toggleVisibility(noteDetailPlaceholder, true);
+        if (elements.buttons.editNote) elements.buttons.editNote.disabled = true;
+        if (elements.buttons.archiveNote) elements.buttons.archiveNote.disabled = true;
+        if (elements.buttons.deleteNote) elements.buttons.deleteNote.disabled = true;
+        if (elements.tags.btn) elements.tags.btn.disabled = true;
+        if (elements.links.btn) elements.links.btn.disabled = true;
+    };
+
+    const fetchAndDisplayNotes = async () => {
+        try {
+            const notes = await apiCall('/notes/?limit=200');
+            domHelper.clearChildren(notesList);
+            if (notes && notes.length > 0) {
+                notesCache = notes;
+                notes.forEach(note => {
+                    const listItem = domHelper.createListItem(note, currentNote?.id === note.id);
+                    notesList.appendChild(listItem);
+                });
+            } else {
+                notesList.innerHTML = '<li class="empty-list">No notes found. Create one!</li>';
+                notesCache = [];
             }
         } catch (error) {
-            showError(noteDetailPlaceholder, `Error loading note: ${error.message}`);
-            noteDetailPlaceholder.classList.remove('hidden');
-            noteDetailElement.classList.add('hidden');
-            currentNote = null;
+            notesList.innerHTML = `<li class="error">Error loading notes: ${error.message}</li>`;
         }
-    }
+    };
 
-    async function handleCreateNote(event) {
-        event.preventDefault(); // Prevent default HTML form submission
-        hideError(createErrorElement);
-        console.log("Submitting create note form...");
-
-        const noteData = {
-            content: createContentInput.value.trim(),
-            memory_type: createMemoryTypeInput.value
-        };
-
-        if (!noteData.content) {
-            showError(createErrorElement, "Content cannot be empty.");
-            return;
-        }
-
-        try {
-            const createdNote = await apiCall('/notes/', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(noteData)
-            });
-            console.log("Note created:", createdNote);
-            hideCreateForm();
-            await fetchAndDisplayNotes(); // Refresh the list
-            // Automatically select the newly created note
-            handleNoteSelection(createdNote.id);
-        } catch (error) {
-            console.error("Error creating note:", error);
-            showError(createErrorElement, `Failed to create note: ${error.message}`);
-        }
-    }
-
-    async function handleEditNote(event) {
-        event.preventDefault();
-        hideError(editErrorElement);
-        console.log("Submitting edit note form...");
-
-        const noteId = editNoteIdInput.value;
-        const noteData = {
-            content: editContentInput.value.trim(),
-            memory_type: editMemoryTypeInput.value
-        };
-
-        if (!noteData.content) {
-             showError(editErrorElement, "Content cannot be empty.");
-            return;
-        }
-
-        try {
-            const updatedNote = await apiCall(`/notes/${noteId}`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(noteData) // Send only editable fields
-            });
-            console.log("Note updated:", updatedNote);
-            // Instead of full refresh, update currentNote and display directly
-            displayNoteDetail(updatedNote); // This hides edit form and shows updated details
-            // Refresh the main list in the background in case sorting changes
-            fetchAndDisplayNotes();
-        } catch (error) {
-            console.error("Error updating note:", error);
-            showError(editErrorElement, `Failed to update note: ${error.message}`);
-        }
-    }
-
-    async function handleDeleteNote() {
-        console.log("handleDeleteNote entered. currentNote:", currentNote); // Add log
-        if (!currentNote) return;
-
-        const noteId = currentNote.id;
-        // Add extra confirmation for permanent delete
-        const confirmation1 = confirm(`PERMANENTLY DELETE NOTE ${noteId}? This cannot be undone.`);
-        if (!confirmation1) {
-            console.log("Delete confirmation 1 cancelled."); // Add log
-            return;
-        }
-
-        console.log("Delete confirmation 1 passed. Prompting for ID."); // Add log
-        const confirmation2 = prompt(`To confirm permanent deletion, please type the note ID (${noteId}) below:`);
-
-        console.log("Prompt input:", confirmation2, "Expected ID:", noteId); // Add log
-        if (confirmation2 !== noteId) {
-            console.log("Delete confirmation 2 failed (ID mismatch)."); // Add log
-            alert("Confirmation failed. Note not deleted.");
-            return;
-        }
-
-        console.log(`Attempting to permanently delete note ${noteId}...`);
-        try {
-            // Disable button during API call (optional but good UX)
-            deleteNoteBtn.disabled = true;
-            deleteNoteBtn.textContent = 'Deleting...';
-
-            await apiCall(`/notes/${noteId}/permanent`, {
-                method: 'DELETE'
-            });
-
-            console.log("Delete API call successful."); // Add log
-            alert(`Note ${noteId} permanently deleted.`);
-
-            // Clear current view and refresh list
-            currentNote = null;
-            noteDetailElement.classList.add('hidden');
-            noteDetailPlaceholder.textContent = `Note ${noteId} deleted. Select another note.`;
-            noteDetailPlaceholder.classList.remove('hidden');
-            // Disable buttons again as no note is selected
-            archiveNoteBtn.disabled = true;
-            deleteNoteBtn.disabled = true;
-            addTagBtn.disabled = true;
-            createLinkBtn.disabled = true;
-            // Reset delete button text here too, although it might be hidden
-            deleteNoteBtn.textContent = 'Delete';
-
-            fetchAndDisplayNotes(); // Refresh list
-
-        } catch (error) {
-            console.error(`Error deleting note: ${error.message}`); // Use console.error
-            alert(`Error deleting note: ${error.message}`);
-            // Re-enable button on error
-            deleteNoteBtn.disabled = false;
-            deleteNoteBtn.textContent = 'Delete';
-        }
-    }
-
-    async function handleRemoveTag(noteId, tagId) {
-        console.log(`Attempting to remove tag ${tagId} from note ${noteId}`);
-        if (!confirm(`Are you sure you want to remove tag ID ${tagId} from this note?`)) {
-            return;
-        }
-        try {
-            const updatedNote = await apiCall(`/notes/${noteId}/tags/${tagId}`, {
-                method: 'DELETE'
-            });
-            // Refresh the detail view to show updated tags
-            displayNoteDetail(updatedNote);
-        } catch (error) {
-             alert(`Error removing tag: ${error.message}`); // Simple alert for now
-        }
-    }
-
-    // --- Add this missing handler function ---
-    async function handleAddTag() {
-        console.log("handleAddTag entered. currentNote:", currentNote); // Add log
-        if (!currentNote) return;
-
-        hideError(addTagErrorElement); // Hide previous errors
-
-        const noteId = currentNote.id;
-        const tagInput = addTagInput.value.trim();
-
-        if (!tagInput) {
-            showError(addTagErrorElement, "Enter an existing Tag ID."); // Updated msg
-            return;
-        }
-
-        // --- For now, only handle numeric Tag IDs ---
-        const tagId = parseInt(tagInput, 10);
-        if (isNaN(tagId)) {
-            showError(addTagErrorElement, "Invalid input: Please enter a numeric Tag ID.");
-            return;
-        }
-        // --- End Tag ID Handling ---
-
-        // TODO: Implement finding tag by name later, requiring a new API endpoint like GET /tags?name=...
-        //       Then create if not found, or use found ID.
-
-        console.log(`Attempting to add tag ID ${tagId} to note ${noteId}`);
-        try {
-            // Disable button during API call
-            addTagBtn.disabled = true;
-            addTagBtn.textContent = 'Adding...';
-
-            const updatedNote = await apiCall(`/notes/${noteId}/tags/${tagId}`, {
-                method: 'POST'
-            });
-
-            console.log("Add tag API call successful."); // Add log
-            // Refresh the detail view to show the updated tag list
-            displayNoteDetail(updatedNote);
-            addTagInput.value = ''; // Clear input on success
-
-        } catch (error) {
-            console.error(`Error adding tag: ${error.message}`); // Use console.error
-            showError(addTagErrorElement, `Failed: ${error.message}`); // Show error in UI
-        } finally {
-            // Re-enable button regardless of success/failure
-            addTagBtn.disabled = false;
-            addTagBtn.textContent = 'Add Tag';
-        }
-    }
-// -----------------------------------------
-
-    async function handleCreateLink() {
-        console.log("handleCreateLink entered. currentNote:", currentNote); // Add log
-        if (!currentNote) return;
-
-        hideError(createLinkErrorElement); // Hide previous errors
-
-        const sourceNoteId = currentNote.id;
-        const targetNoteId = linkTargetNoteIdInput.value.trim();
-
-        if (!targetNoteId) {
-            showError(createLinkErrorElement, "Enter Target Note ID.");
-            return;
-        }
-        // Basic UUID validation (simple check, not foolproof)
-        if (!/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(targetNoteId)) {
-            showError(createLinkErrorElement, "Invalid Target Note ID format (UUID expected).");
-            return;
-        }
-        if (sourceNoteId === targetNoteId) {
-            showError(createLinkErrorElement, "Cannot link a note to itself.");
-            return;
-        }
-
-
-        console.log(`Attempting to link note ${sourceNoteId} to ${targetNoteId}`);
-
-        try {
-            // Disable button during API call
-            createLinkBtn.disabled = true;
-            createLinkBtn.textContent = 'Linking...';
-
-            // We don't have a specific response model defined for this,
-            // but the API endpoint returns minimal info on success (201)
-            await apiCall(`/notes/${sourceNoteId}/links/${targetNoteId}`, {
-                method: 'POST'
-            });
-
-            console.log("Create link API call successful."); // Add log
-            // Refresh links in the detail view
-            fetchAndDisplayLinks(sourceNoteId); // Refresh just the links part
-            linkTargetNoteIdInput.value = ''; // Clear input on success
-
-        } catch (error) {
-            console.error("Error creating link:", error); // Use console.error
-            showError(createLinkErrorElement, `Failed: ${error.message}`); // Show error in UI
-        } finally {
-            // Re-enable button regardless of success/failure
-            createLinkBtn.disabled = false;
-            createLinkBtn.textContent = 'Create Link';
-        }
-    }
-    // -----------------------------------------
-
-
-async function handleToggleArchive() {
-    console.log("handleToggleArchive entered. currentNote:", currentNote);
-    if (!currentNote) return;
-
-    const noteId = currentNote.id;
-    const isArchived = currentNote.is_archived;
-    const action = isArchived ? 'unarchive' : 'archive';
-    const confirmationMessage = `Are you sure you want to ${action} note ${noteId}?`;
-
-    console.log("About to show confirmation:", confirmationMessage);
-    if (!confirm(confirmationMessage)) {
-        console.log("Confirmation denied.");
-        return;
-    }
-    console.log("Confirmation accepted. Proceeding with API call...");
-
-    try {
-        // Disable button during API call
-        archiveNoteBtn.disabled = true;
-        archiveNoteBtn.textContent = `${action.charAt(0).toUpperCase() + action.slice(1)}ing...`;
-
-        const updatedNote = await apiCall(`/notes/${noteId}/${action}`, {
-            method: 'POST'
-        });
-
-        console.log("API call successful, updating UI...");
-        displayNoteDetail(updatedNote); // Update details shown (incl. button text)
-        fetchAndDisplayNotes(); // Refresh list view in case filtering changes
-
-    } catch (error) {
-        console.error(`Error in handleToggleArchive: ${error.message}`);
-        alert(`Error ${action}ing note: ${error.message}`);
-         // Re-enable button and reset text on error
-         archiveNoteBtn.disabled = false;
-         archiveNoteBtn.textContent = isArchived ? 'Unarchive' : 'Archive';
-    }
-}
-// -----------------------------------------
-
-    // --- Async Function Wrappers (Initial load, Links) ---
-    async function fetchAndDisplayNotes() {
-        console.log("Fetching notes list...");
-        try {
-            const notes = await apiCall('/notes/?limit=200'); // Increase limit?
-            displayNoteList(notes);
-        } catch (error) {
-            console.error("Error fetching notes:", error);
-            notesListElement.innerHTML = `<li>Error loading notes: ${error.message}</li>`;
-        }
-    }
-
-     async function fetchAndDisplayLinks(noteId) {
-        // Reset link lists
-        outgoingLinksList.innerHTML = '<li>Loading...</li>';
-        incomingLinksList.innerHTML = '<li>Loading...</li>';
-        try {
-             // Fetch outgoing and incoming links concurrently
-            const [outgoing, incoming] = await Promise.all([
-                apiCall(`/notes/${noteId}/links/outgoing`),
-                apiCall(`/notes/${noteId}/links/incoming`)
-            ]);
-            displayLinks(outgoingLinksList, outgoing);
-            displayLinks(incomingLinksList, incoming);
-        } catch (error) {
-            console.error(`Error fetching links for note ${noteId}:`, error);
-            outgoingLinksList.innerHTML = '<li>Error loading links</li>';
-            incomingLinksList.innerHTML = '<li>Error loading links</li>';
-        }
-     }
-
-// Near the end of DOMContentLoaded
-console.log("Attempting to add listener to archiveNoteBtn:", archiveNoteBtn); // Check the button object
-if (archiveNoteBtn) {
-    archiveNoteBtn.addEventListener('click', handleToggleArchive);
-    console.log("Listener added to archiveNoteBtn"); // Confirm listener attached
-} else {
-    console.error("Archive button element not found!");
-}
-
-    // --- Initial Setup & Event Listeners ---
-    fetchAndDisplayNotes(); // Load initial list
-
-    showCreateFormBtn.addEventListener('click', showCreateForm);
-    cancelCreateBtn.addEventListener('click', hideCreateForm);
-    createForm.addEventListener('submit', handleCreateNote);
-
-    editNoteBtn.addEventListener('click', showEditForm);
-    cancelEditBtn.addEventListener('click', hideEditForm);
-    editForm.addEventListener('submit', handleEditNote);
-
-    // Add listeners for new buttons
-    archiveNoteBtn.addEventListener('click', handleToggleArchive);
-    deleteNoteBtn.addEventListener('click', handleDeleteNote);
-    addTagBtn.addEventListener('click', handleAddTag);
-    createLinkBtn.addEventListener('click', handleCreateLink);
-
-    // Disable buttons initially until a note is selected
-    archiveNoteBtn.disabled = true;
-    deleteNoteBtn.disabled = true;
-    addTagBtn.disabled = true;
-    createLinkBtn.disabled = true;
-
+    initializeEventListeners();
+    initializeState();
+    fetchAndDisplayNotes();
 });
