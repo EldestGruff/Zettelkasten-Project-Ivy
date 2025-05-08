@@ -110,14 +110,7 @@ services:
       - "8000:8000"
       # If only access from Ivy itself was needed:
       # - "127.0.0.1:8000:8000"
-    volumes:
-      # Optional: Mount the backend code for live development reloading (Comment out for 'production')
-      # This allows changes in ./backend on the host to reflect immediately
-      # inside the container without rebuilding the image (Uvicorn's --reload needed).
-      # Note: This bypasses the COPY step in Dockerfile for the mounted code.
-      # - ./backend:/app
-      # Ensure the backend directory exists before trying to mount
-      pass # No volume mount for production build, code is copied in Dockerfile
+    volumes: [] # Specifies no volumes for this service
     depends_on:
       # Define service dependencies for startup order
       postgres:
