@@ -82,9 +82,58 @@ services:
         max-size: "10m"
         max-file: "5" # Keep more logs for Ollama
 
-  # --- Backend Service Placeholder ---
-  # backend:
-  #   # ... (backend definition) ...
+# --- NEW Backend Service ---
+  backend:
+    container_name: zettelkasten-backend
+    # Build the image using the Dockerfile in the ./backend directory
+    build:
+      context: ./backend # Specifies the directory containing the Dockerfile
+      dockerfile: Dockerfile # Explicitly state the Dockerfile name
+    restart: unless-stopped
+    env_file: .env # Load base environment variables from .env file
+    environment:
+      # --- Override specific variables for container networking ---
+      # Use service names, not localhost/127.0.0.1 inside the container network
+      POSTGRES_SERVER: postgres # Connect to the postgres service name
+      # POSTGRES_PORT: 5432 # Default, usually not needed to override
+      QDRANT_HOST: qdrant # Connect to the qdrant service name
+      # QDRANT_PORT: 6333 # Default, usually not needed to override
+      OLLAMA_API_BASE_URL: http://ollama:11434 # Connect to ollama service name
+      # Optional: Set Python path if needed within container, though WORKDIR /app should handle it
+      # PYTHONPATH: /app
+      # Ensure TZ is passed from .env if defined there
+      TZ: ${TZ:-Etc/UTC}
+      # Note: DATABASE_URL is computed internally by the Settings class based on the above variables
+    ports:
+      # Map port 8000 inside the container to port 8000 on the Ivy host
+      # Use 0.0.0.0 to allow access from other machines (like Toottoot)
+      - "8000:8000"
+      # If only access from Ivy itself was needed:
+      # - "127.0.0.1:8000:8000"
+    volumes:
+      # Optional: Mount the backend code for live development reloading (Comment out for 'production')
+      # This allows changes in ./backend on the host to reflect immediately
+      # inside the container without rebuilding the image (Uvicorn's --reload needed).
+      # Note: This bypasses the COPY step in Dockerfile for the mounted code.
+      # - ./backend:/app
+      # Ensure the backend directory exists before trying to mount
+      pass # No volume mount for production build, code is copied in Dockerfile
+    depends_on:
+      # Define service dependencies for startup order
+      postgres:
+        condition: service_healthy # Wait for postgres healthcheck to pass
+      qdrant:
+        condition: service_started # Wait for qdrant to start (no easy healthcheck command)
+      ollama:
+        condition: service_started # Wait for ollama to start
+    networks:
+      - zettelkasten_net
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+  # --- End Backend Service ---
 
 volumes:
   postgres_data:
