@@ -81,7 +81,6 @@ graph TD
     class PLEX,NFS_SMB storage
     class VOL_PG,VOL_QDRANT,VOL_OLLAMA,GPU host
 
-
 ## Key Components & Details
 
 1.  **Ivy (Host):**
