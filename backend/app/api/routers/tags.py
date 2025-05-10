@@ -1,6 +1,6 @@
 # backend/app/api/routers/tags.py
-from fastapi import APIRouter, HTTPException, status, Depends
-from typing import List
+from fastapi import APIRouter, HTTPException, status, Depends, Query
+from typing import List, Optional
 from sqlalchemy.exc import IntegrityError # Import specific DB exceptions
 
 from app.api.deps import DbSession
@@ -54,30 +54,25 @@ async def create_tag_endpoint( # Renamed function slightly for clarity
 
 # --- Endpoint to Read Tags ---
 @router.get("/", response_model=List[TagRead])
-async def read_tags_endpoint( # Renamed function slightly
+async def read_tags_endpoint(
     db: DbSession,
-    skip: int = 0,
-    limit: int = 100
+    name: Optional[str] = Query(None, min_length=1, description="Search query for tag name (case-insensitive, partial match)"),
+    skip: int = Query(0, ge=0), # ge=0 means greater than or equal to 0
+    limit: int = Query(100, ge=1, le=200) # Add some bounds to limit
 ):
     """
     Retrieve a list of tags.
+    If 'name' query parameter is provided, searches for tags matching the name.
+    Otherwise, returns a paginated list of all tags.
     """
-    tags = crud.tag.get_tags(db, skip=skip, limit=limit)
+    if name:
+        # If name query is present, use the search function
+        tags = crud.tag.search_tags_by_name(db, name_query=name, limit=limit)
+    else:
+        # Otherwise, get all tags with pagination
+        tags = crud.tag.get_tags(db, skip=skip, limit=limit)
 
-    # --- Debugging Prints ---
-    print(f"--- CRUD returned type: {type(tags)} ---")
-    print(f"--- CRUD returned value: {tags} ---")
-    if isinstance(tags, list) and len(tags) > 0:
-        first_tag = tags[0]
-        print(f"--- First tag type: {type(first_tag)} ---")
-        print(f"--- First tag dir(): {dir(first_tag)} ---") # See available attributes
-        try:
-            print(f"--- First tag id: {first_tag.id}, name: {first_tag.name} ---")
-        except Exception as e:
-            print(f"--- Error accessing attributes: {e} ---")
-    # --- End Debugging Prints ---
-
-    return tags # Still return the original list
+    return tags # FastAPI converts SQLAlchemy models to TagRead schemas
 
 # --- Endpoint to Read a Single Tag by ID ---
 @router.get("/{tag_id}", response_model=TagRead)

@@ -3,271 +3,80 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="X-UA-Compatible" content="ie=edge">
     <title>Ivy - Second Brain</title>
-    <!-- Link to external CSS file (recommended) -->
-    <link rel="stylesheet" href="/static/css/styles.css">
+    <link rel="stylesheet" href="/static/css/styles.css"> <!-- Assuming you'll create this -->
     <style>
-        /* Basic inline styles for layout - Move to styles.css */
-        body { 
-            display: flex; 
-            font-family: -apple-system, BlinkMacSystemFont, sans-serif; 
-            margin: 1em; 
-            gap: 2em; 
-            background-color: #f8f9fa; 
-            min-height: 100vh;
-            -webkit-font-smoothing: antialiased;
-        }
-        #search-section { 
-            width: 100%; 
-            margin-bottom: 1em; 
-            padding: 1em; 
-            background-color: #fff; 
-            border-radius: 5px; 
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1); 
-        }
-        #content-wrapper { 
-            display: flex; 
-            width: 100%; 
-            gap: 2em; 
-        }
-        #sidebar { 
-            width: 35%; 
-            max-width: 450px; 
-            display: flex; 
-            flex-direction: column; 
-        }
-        #main-view { 
-            flex-grow: 1; 
-            display: flex; 
-            flex-direction: column; 
-        }
-        .panel { 
-            background-color: #fff; 
-            padding: 1.5em; 
-            border-radius: 5px; 
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1); 
-            margin-bottom: 1em;
-        }
+        /* Basic inline styles for layout - Consider moving to styles.css */
+        body { display: flex; flex-direction: column; font-family: sans-serif; margin: 1em; gap: 1em; background-color: #f8f9fa; }
+        #search-section { width: calc(100% - 2em); margin-bottom: 1em; padding: 1em; background-color: #fff; border-radius: 5px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        #content-wrapper { display: flex; width: 100%; gap: 2em; flex-grow: 1; }
+        #sidebar { width: 35%; max-width: 450px; display: flex; flex-direction: column; gap: 1em;}
+        #main-view { flex-grow: 1; display: flex; flex-direction: column; gap: 1em; }
+        .panel { background-color: #fff; padding: 1.5em; border-radius: 5px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; flex-direction: column; }
 
         /* List styling */
-        #notes-list-container { 
-            flex-grow: 1; 
-            overflow-y: auto; 
-            border: 1px solid #ccc; 
-            margin-bottom: 1em; 
-            -webkit-overflow-scrolling: touch; /* Smooth scrolling for Safari */
-        }
-        #notes-list { 
-            list-style: none; 
-            padding: 0; 
-            margin: 0; 
-        }
-        #notes-list li { 
-            padding: 0.75em; 
-            cursor: pointer; 
-            border-bottom: 1px solid #eee; 
-        }
-        #notes-list li:last-child { 
-            border-bottom: none; 
-        }
-        #notes-list li:hover { 
-            background-color: #f1f3f5; 
-        }
-        #notes-list li.active { 
-            background-color: #e7f3ff; 
-            font-weight: bold; 
-            border-left: 3px solid #007bff; 
-            padding-left: calc(0.75em - 3px); 
-        }
+        #notes-list-container { flex-grow: 1; min-height: 200px; /* Ensure it has some height */ overflow-y: auto; border: 1px solid #dee2e6; margin-bottom: 1em; background-color: #fff; }
+        #notes-list { list-style: none; padding: 0; margin: 0; }
+        #notes-list li { padding: 0.75em; cursor: pointer; border-bottom: 1px solid #f1f3f5; }
+        #notes-list li:last-child { border-bottom: none; }
+        #notes-list li:hover { background-color: #e9ecef; }
+        #notes-list li.active { background-color: #e7f3ff; font-weight: bold; border-left: 3px solid #007bff; padding-left: calc(0.75em - 3px); }
 
         /* Detail View Styling */
-        #note-content-display { 
-            white-space: pre-wrap; 
-            background-color: #f9f9f9; 
-            padding: 1em; 
-            border: 1px solid #ddd; 
-            min-height: 100px; 
-            margin-bottom: 1em; 
-            font-family: monospace; 
-            -webkit-user-select: text; /* Allow text selection in Safari */
-        }
-        .tag-list span { 
-            background-color: #e9ecef; 
-            padding: 0.2em 0.5em; 
-            border-radius: 3px; 
-            margin-right: 0.5em; 
-            margin-bottom: 0.5em; 
-            display: inline-block; 
-            font-size: 0.9em;
-        }
-        .tag-list button { 
-            margin-left: 4px; 
-            cursor: pointer; 
-            border: none; 
-            background: #e74c3c; 
-            color: white; 
-            border-radius: 50%; 
-            font-size: 0.7em; 
-            width: 16px; 
-            height: 16px; 
-            line-height: 1; 
-            padding: 0; 
-            vertical-align: middle; 
-            -webkit-appearance: none; /* Fix Safari button appearance */
-        }
-        .link-list ul { 
-            list-style: none; 
-            padding-left: 0; 
-            margin-top: 0.3em;
-        }
-        .link-list li { 
-            margin-bottom: 0.3em; 
-        }
-        .link-list a { 
-            text-decoration: none; 
-            color: #007bff; 
-            cursor: pointer; 
-            font-size: 0.9em; 
-        }
-        .link-list a:hover { 
-            text-decoration: underline; 
-        }
-        .metadata { 
-            font-size: 0.85em; 
-            color: #6c757d; 
-            margin-top: 1em;
-        }
+        #note-content-display { white-space: pre-wrap; background-color: #f9f9f9; padding: 1em; border: 1px solid #e0e0e0; min-height: 100px; margin-bottom: 1em; font-family: monospace; font-size: 0.95em; }
+        .tag-list span { background-color: #e9ecef; padding: 0.2em 0.5em; border-radius: 0.25rem; margin-right: 0.5em; margin-bottom: 0.5em; display: inline-block; font-size: 0.9em;}
+        .tag-list button { margin-left: 4px; cursor: pointer; border: none; background: #e74c3c; color: white; border-radius: 50%; font-size: 0.7em; width: 16px; height: 16px; line-height: 1; padding: 0; vertical-align: middle; }
+        .link-list ul { list-style: none; padding-left: 0; margin-top: 0.3em;}
+        .link-list li { margin-bottom: 0.3em; }
+        .link-list strong { font-size: 0.95em; display: block; margin-bottom: 0.3em;}
+        .link-list a { text-decoration: none; color: #007bff; cursor: pointer; font-size: 0.9em; }
+        .link-list a:hover { text-decoration: underline; }
+        .metadata { font-size: 0.85em; color: #6c757d; margin-top: 1em; border-top: 1px solid #eee; padding-top: 0.5em; }
+        .metadata span { margin-right: 10px; }
 
         /* Form Styling */
-        label { 
-            display: block; 
-            margin-bottom: 0.3em; 
-            font-weight: bold; 
-        }
-        input[type="text"], input[type="search"], select, textarea { 
-            width: calc(100% - 1.2em); 
-            margin-bottom: 1em; 
-            padding: 0.6em; 
-            border: 1px solid #ced4da; 
-            border-radius: 4px; 
-            font-size: 1em;
-            -webkit-appearance: none; /* Fix Safari input appearance */
-        }
-        textarea { 
-            min-height: 150px; 
-            font-family: monospace; 
-            -webkit-overflow-scrolling: touch; /* Smooth scrolling for Safari */
-        }
-        .button-group { 
-            margin-top: 1em; 
-            display: flex; 
-            gap: 0.5em; 
-            flex-wrap: wrap; 
-        }
-        button { 
-            padding: 0.6em 1em; 
-            background-color: #007bff; 
-            color: white; 
-            border: none; 
-            border-radius: 4px; 
-            cursor: pointer; 
-            font-size: 0.9em;
-            -webkit-appearance: none; /* Fix Safari button appearance */
-        }
-        button:hover { 
-            background-color: #0056b3; 
-        }
-        button:disabled { 
-            background-color: #adb5bd; 
-            cursor: not-allowed; 
-            opacity: 0.65; /* Better visual indication for Safari */
-        }
-        button.secondary { 
-            background-color: #6c757d; 
-        }
-        button.secondary:hover { 
-            background-color: #5a6268; 
-        }
-        button.danger { 
-            background-color: #dc3545; 
-        }
-        button.danger:hover { 
-            background-color: #c82333; 
-        }
-        .error-message { 
-            color: #dc3545; 
-            font-size: 0.9em; 
-            margin-top: 0.5em; 
-        }
-        .hidden { 
-            display: none !important; /* Force hidden state in Safari */
-        }
+        label { display: block; margin-bottom: 0.3em; font-weight: 600; color: #495057;}
+        input[type="text"], input[type="search"], select, textarea { width: calc(100% - 1.2em); margin-bottom: 1em; padding: 0.6em; border: 1px solid #ced4da; border-radius: 0.25rem; font-size: 1em; box-sizing: border-box;}
+        input[type="search"] { -webkit-appearance: none; } /* Fix for Safari search input styling */
+        textarea { min-height: 150px; font-family: monospace; resize: vertical; }
+        select { height: calc(1.2em + 1.2em + 2px); /* Match padding of other inputs */}
+        .button-group { margin-top: 1em; display: flex; gap: 0.5em; flex-wrap: wrap; justify-content: flex-start; }
+        button { padding: 0.6em 1em; background-color: #007bff; color: white; border: none; border-radius: 0.25rem; cursor: pointer; font-size: 0.9em;}
+        button:hover { background-color: #0056b3; }
+        button:disabled { background-color: #adb5bd; cursor: not-allowed; }
+        button.secondary { background-color: #6c757d; }
+        button.secondary:hover { background-color: #5a6268; }
+        button.danger { background-color: #dc3545; }
+        button.danger:hover { background-color: #c82333; }
+        .error-message { color: #dc3545; font-size: 0.9em; margin-top: 0.5em; }
+        .hidden { display: none !important; } /* Use !important to ensure override */
 
         /* Search Results */
-        #search-results-list { 
-            list-style: none; 
-            padding: 0; 
-            max-height: 200px; 
-            overflow-y: auto;
-            -webkit-overflow-scrolling: touch; /* Smooth scrolling for Safari */
-        }
-        #search-results-list li { 
-            margin-bottom: 0.5em; 
-            padding-bottom: 0.5em; 
-            border-bottom: 1px dotted #eee; 
-        }
-        #search-results-list li a { 
-            font-weight: bold; 
-        }
-        #search-results-list li small { 
-            color: #6c757d; 
-        }
-        
-        /* Safari-specific fixes */
-        @supports (-webkit-touch-callout: none) {
-            /* Safari-only fixes */
-            select {
-                background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%23495057'><polygon points='0,0 12,0 6,8'/></svg>");
-                background-repeat: no-repeat;
-                background-position: right 0.7em top 50%;
-                background-size: 0.65em auto;
-                padding-right: 1.5em;
-                -webkit-appearance: none;
-            }
-            
-            input[type="search"]::-webkit-search-decoration,
-            input[type="search"]::-webkit-search-cancel-button,
-            input[type="search"]::-webkit-search-results-button,
-            input[type="search"]::-webkit-search-results-decoration {
-                -webkit-appearance: none;
-            }
-        }
+        #search-results-container { max-height: 250px; overflow-y: auto; }
+        #search-results-list { list-style: none; padding: 0; }
+        #search-results-list li { margin-bottom: 0.5em; padding: 0.5em; border-bottom: 1px dotted #eee; background-color: #f8f9fa; border-radius: 3px;}
+        #search-results-list li:last-child { border-bottom: none;}
+        #search-results-list li a { font-weight: bold; }
+        #search-results-list li small { color: #6c757d; display: block; margin-top: 0.2em; }
 
-        /* Fix for flex layout in Safari */
-        @media not all and (min-resolution:.001dpcm) { 
-            @supports (-webkit-appearance:none) {
-                #content-wrapper {
-                    width: calc(100% - 2em);
-                }
-                
-                #sidebar, #main-view {
-                    min-height: 400px;
-                }
-            }
-        }
+        /* AI Suggestion Styling */
+        #ai-suggestion-indicator { color: #17a2b8; }
+        #ai-suggestion-indicator a { color: #007bff; text-decoration: underline; cursor: pointer; }
+        #ai-suggestion-reasoning { background-color: #f0f8ff; padding: 0.5em; border-radius: 3px; border: 1px solid #cce5ff; }
+        #edit-form-ai-suggestion { color: #17a2b8; }
+
     </style>
 </head>
 <body>
 
-    <div style="display: flex; flex-direction: column; width: 100%;"> <!-- Wrapper for Search + Content -->
+    <div style="display: flex; flex-direction: column; width: 100%; max-height: 100vh;"> <!-- Wrapper for Search + Content -->
 
         <!-- === Search Section === -->
         <div id="search-section" class="panel">
             <h3>Semantic Search</h3>
             <div style="display: flex; gap: 0.5em;">
                 <input type="search" id="search-input" placeholder="Search note content..." style="flex-grow: 1; margin-bottom: 0;">
-                <button id="search-btn" type="button">Search</button>
+                <button id="search-btn">Search</button>
             </div>
             <div id="search-results-container" style="margin-top: 1em;">
                 <ul id="search-results-list">
@@ -279,7 +88,7 @@
         <!-- === End Search Section === -->
 
         <!-- === Main Content Area === -->
-        <div id="content-wrapper">
+        <div id="content-wrapper" style="flex-grow: 1; overflow: hidden;">
 
             <!-- Sidebar for Notes List and Creation -->
             <div id="sidebar">
@@ -291,7 +100,7 @@
                         </ul>
                     </div>
                      <div class="button-group">
-                        <button id="show-create-form-btn" type="button">Create New Note</button>
+                        <button id="show-create-form-btn">Create New Note</button>
                     </div>
                 </div>
 
@@ -333,30 +142,37 @@
                 <div id="note-detail" class="panel hidden">
                     <h3 id="note-title"></h3>
                     <div class="button-group">
-                         <button id="edit-note-btn" type="button">Edit</button>
-                         <button id="archive-note-btn" class="secondary" disabled type="button">Archive</button>
-                         <button id="delete-note-btn" class="danger" disabled type="button">Delete</button>
+                         <button id="edit-note-btn">Edit</button>
+                         <button id="archive-note-btn" class="secondary" disabled>Archive</button>
+                         <button id="delete-note-btn" class="danger" disabled>Delete</button>
                     </div>
-                    <hr>
+                    <hr style="margin: 1em 0;">
                     <label>Content:</label>
                     <div id="note-content-display"></div>
-                    <p><strong>Type:</strong> <span id="note-memory-type"></span></p>
+                    <p style="margin-top: 1em;">
+                        <strong>Type:</strong> <span id="note-memory-type"></span>
+                        <span id="ai-suggestion-indicator" class="hidden" style="margin-left: 10px; font-size: 0.9em;">
+                            (AI Suggests: <a href="#" id="apply-ai-suggestion-link" title="Click to apply AI suggestion"><span id="ai-suggested-type-text"></span></a>)
+                        </span>
+                    </p>
+                    <div id="ai-suggestion-reasoning" class="hidden" style="font-style:italic; color: #666; font-size:0.85em; margin-left:0px; margin-bottom:10px; padding: 0.5em; background-color:#f0f8ff; border: 1px solid #cce5ff; border-radius:3px;"></div>
+
                     <p><strong>Archived:</strong> <span id="note-archived"></span></p>
-                    <div>
+                    <div style="margin-bottom: 0.5em;">
                         <strong>Tags:</strong>
                         <span id="note-tags" class="tag-list"></span>
                         <div style="margin-top: 0.5em;">
-                            <input type="text" id="add-tag-input" placeholder="Existing Tag ID" size="10" style="margin-bottom: 0; width: auto;">
-                            <button id="add-tag-btn" class="secondary" style="padding: 0.4em 0.8em;" disabled type="button">Add Tag</button>
-                            <span id="add-tag-error" class="error-message hidden" style="margin-left: 1em;"></span>
+                            <input type="text" id="add-tag-input" placeholder="Existing Tag ID" size="10" style="margin-bottom: 0; width: auto; display: inline-block; vertical-align: middle;">
+                            <button id="add-tag-btn" class="secondary" style="padding: 0.4em 0.8em; vertical-align: middle;" disabled>Add Tag</button>
+                            <span id="add-tag-error" class="error-message hidden" style="margin-left: 1em; display: inline-block;"></span>
                         </div>
                     </div>
-                     <div style="margin-top: 1em;">
+                     <div style="margin-top: 1em; margin-bottom: 0.5em;">
                          <strong>Link to Note:</strong>
                          <div>
-                             <input type="text" id="link-target-note-id" placeholder="Target Note ID (UUID)" size="38" style="margin-bottom: 0; width: auto;">
-                             <button id="create-link-btn" class="secondary" style="padding: 0.4em 0.8em;" disabled type="button">Create Link</button>
-                             <span id="create-link-error" class="error-message hidden" style="margin-left: 1em;"></span>
+                             <input type="text" id="link-target-note-id" placeholder="Target Note ID (UUID)" size="30" style="margin-bottom: 0; width: auto; display: inline-block; vertical-align: middle;">
+                             <button id="create-link-btn" class="secondary" style="padding: 0.4em 0.8em; vertical-align: middle;" disabled>Create Link</button>
+                             <span id="create-link-error" class="error-message hidden" style="margin-left: 1em; display: inline-block;"></span>
                          </div>
                      </div>
                     <div class="link-list" style="margin-top: 1em;">
@@ -368,8 +184,8 @@
                         <ul id="note-links-incoming"><li></li></ul>
                     </div>
                     <div class="metadata">
-                        Created: <span id="note-created"></span> |
-                        Updated: <span id="note-updated"></span>
+                        <span>Created: <span id="note-created"></span></span>
+                        <span>Updated: <span id="note-updated"></span></span>
                     </div>
                 </div> <!-- End Note Detail -->
 
@@ -390,6 +206,7 @@
                                 <option value="episodic">Episodic</option>
                                 <option value="procedural">Procedural</option>
                             </select>
+                            <span id="edit-form-ai-suggestion" class="hidden" style="font-size:0.8em; margin-left:10px; color: #17a2b8; font-style: italic;"></span>
                         </div>
                         <div class="button-group">
                             <button type="submit">Save Changes</button>

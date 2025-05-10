@@ -1,7 +1,7 @@
 # backend/app/schemas/note.py
 import uuid
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Dict
 
 from pydantic import BaseModel, Field, ConfigDict
 
@@ -50,6 +50,11 @@ class NoteRead(NoteBase):
     updated_at: datetime
     tags: List[TagRead] = [] # Include related tags using the TagRead schema
 
+    ai_suggestion: Optional[Dict[str, str]] = Field(
+        None,
+        description="AI suggested memory type and reasoning, e.g., {'suggested_type': 'semantic', 'reasoning': '...'}"
+    )
+    
     model_config = ConfigDict(
         from_attributes=True
     )

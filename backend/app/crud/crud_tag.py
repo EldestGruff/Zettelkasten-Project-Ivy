@@ -2,7 +2,7 @@
 from typing import List, Optional
 
 from sqlalchemy.orm import Session
-from sqlalchemy import select # Use the newer 'select' syntax
+from sqlalchemy import select, func # Use the newer 'select' syntax
 
 # Import the SQLAlchemy model and Pydantic schemas
 from app.models.tag import Tag
@@ -129,3 +129,30 @@ def remove_tag(db: Session, *, tag_id: int) -> Optional[Tag]:
         # Return the object mainly for confirmation or potential logging.
         return db_tag
     return None # Tag not found
+
+def search_tags_by_name(db: Session, name_query: str, limit: int = 10) -> List[Tag]:
+    """
+    Search for tags where the name contains the query string (case-insensitive).
+
+    Args:
+        db: The database session.
+        name_query: The string to search for within tag names.
+        limit: Maximum number of tags to return.
+
+    Returns:
+        A list of Tag SQLAlchemy model objects matching the query.
+    """
+    if not name_query or not name_query.strip():
+        return [] # Return empty if query is blank
+
+    # Use ILIKE for case-insensitive partial matching (PostgreSQL specific)
+    # For other DBs, you might use func.lower(Tag.name).contains(name_query.lower())
+    search_term = f"%{name_query}%" # Prepare for LIKE/ILIKE
+    statement = (
+        select(Tag)
+        .where(Tag.name.ilike(search_term)) # Case-insensitive LIKE
+        .order_by(Tag.name) # Order alphabetically
+        .limit(limit)
+    )
+    results = db.execute(statement).scalars().all()
+    return results

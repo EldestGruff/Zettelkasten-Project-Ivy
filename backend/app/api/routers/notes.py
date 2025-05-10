@@ -3,7 +3,7 @@ import uuid
 from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, status, Depends, Query
-# --- Need additional imports ---
+from app.services.ai_categorization import suggest_memory_type
 from sqlalchemy import select # Needed for link pre-check
 from sqlalchemy.exc import IntegrityError # To catch DB errors
 
@@ -25,18 +25,49 @@ router = APIRouter(
     responses={404: {"description": "Not found"}},
 )
 
-# --- Endpoint to Create a Note ---
 @router.post("/", response_model=NoteRead, status_code=status.HTTP_201_CREATED)
 async def create_note_endpoint(note_in: NoteCreate, db: DbSession):
-    """ Create a new note. """
+    """
+    Create a new note.
+    Includes an AI suggestion for memory type in the response if successful.
+    """
     try:
-        created_note = await crud.note.create_note(db=db, note_in=note_in)
-        return created_note
-    except Exception as e:
-        db.rollback()
-        print(f"ERROR creating note: {e}")
-        raise HTTPException(status_code=500, detail="An unexpected error occurred.")
+        # Create the note in PostgreSQL first
+        created_note_db = await crud.note.create_note(db=db, note_in=note_in)
+        # Note: crud.note.create_note now also handles Qdrant upsert
 
+        # --- Get AI suggestion for memory type ---
+        ai_suggestion_dict: Optional[Dict[str, str]] = None # Initialize
+        if created_note_db.content: # Only attempt categorization if there's content
+            try:
+                ai_suggestion_dict = await suggest_memory_type(created_note_db.content)
+                if ai_suggestion_dict:
+                    print(f"AI Suggestion for note {created_note_db.id}: {ai_suggestion_dict}")
+                else:
+                    print(f"No AI suggestion returned for note {created_note_db.id}.")
+            except Exception as ai_e:
+                # Log the error but don't let AI failure block note creation response
+                print(f"ERROR during AI categorization for note {created_note_db.id}: {ai_e}")
+        # ----------------------------------------
+
+        # Prepare the response using NoteRead schema.
+        # Pydantic will automatically try to populate fields from created_note_db.
+        # We need to manually add the ai_suggestion if it exists.
+        response_data = NoteRead.model_validate(created_note_db) # Convert DB model to Pydantic model
+        if ai_suggestion_dict:
+            response_data.ai_suggestion = ai_suggestion_dict
+
+        return response_data
+
+    except Exception as e:
+        db.rollback() # Rollback if main DB op failed
+        print(f"ERROR creating note or getting suggestion: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred while creating the note.",
+        )
+    
+    
 # --- Endpoint to Read Notes ---
 @router.get("/", response_model=List[NoteReadMinimal])
 async def read_notes_endpoint(

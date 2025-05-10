@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     # Optional: Ollama API details
     OLLAMA_API_BASE_URL: str = "http://localhost:11434" # Default, might need adjustment
     EMBEDDING_MODEL_NAME: str = "nomic-embed-text"
+    CATEGORIZATION_MODEL_NAME: str = "mistral:7b-instruct-q4_K_M"
 
     # Define the database connection URL using a computed field
     # This builds the URL from the individual components

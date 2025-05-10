@@ -1,5 +1,5 @@
 # backend/app/crud/__init__.py
-from .crud_tag import get_tag, get_tag_by_name, get_tags, create_tag, update_tag, remove_tag
+from .crud_tag import get_tag, get_tag_by_name, get_tags, create_tag, update_tag, remove_tag, search_tags_by_name
 from .crud_note import ( # Add Note CRUD functions
     get_note,
     get_note_including_archived,
