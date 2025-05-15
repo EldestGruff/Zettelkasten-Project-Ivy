@@ -1,11 +1,10 @@
 // frontend/static/js/app.js
-// State: AFTER Search UI (Step 66) + WITH AI Suggestion DISPLAY (Part 1 of Step 82)
+// Includes AI suggestion display and feedback logging
 
 document.addEventListener('DOMContentLoaded', () => {
     console.log("DOM fully loaded and parsed");
 
     // --- DOM Element References ---
-    // Sidebar
     const notesListElement = document.getElementById('notes-list');
     const showCreateFormBtn = document.getElementById('show-create-form-btn');
     const createFormContainer = document.getElementById('note-create-form-container');
@@ -14,8 +13,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const createMemoryTypeInput = document.getElementById('create-memory-type');
     const cancelCreateBtn = document.getElementById('cancel-create-btn');
     const createErrorElement = document.getElementById('create-error');
-
-    // Main View
     const noteDetailElement = document.getElementById('note-detail');
     const noteDetailPlaceholder = document.getElementById('note-detail-placeholder');
     const noteTitleElement = document.getElementById('note-title');
@@ -30,8 +27,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const deleteNoteBtn = document.getElementById('delete-note-btn');
     const outgoingLinksList = document.getElementById('note-links-outgoing');
     const incomingLinksList = document.getElementById('note-links-incoming');
-
-    // Edit Form
+    const searchInput = document.getElementById('search-input');
+    const searchBtn = document.getElementById('search-btn');
+    const searchResultsList = document.getElementById('search-results-list');
+    const searchErrorElement = document.getElementById('search-error');
     const editFormContainer = document.getElementById('note-edit-form-container');
     const editForm = document.getElementById('note-edit-form');
     const editNoteIdInput = document.getElementById('edit-note-id');
@@ -39,37 +38,22 @@ document.addEventListener('DOMContentLoaded', () => {
     const editMemoryTypeInput = document.getElementById('edit-memory-type');
     const cancelEditBtn = document.getElementById('cancel-edit-btn');
     const editErrorElement = document.getElementById('edit-error');
-
-    // Tag/Link Inputs in Detail View
     const addTagInput = document.getElementById('add-tag-input');
     const addTagBtn = document.getElementById('add-tag-btn');
     const addTagErrorElement = document.getElementById('add-tag-error');
     const linkTargetNoteIdInput = document.getElementById('link-target-note-id');
     const createLinkBtn = document.getElementById('create-link-btn');
     const createLinkErrorElement = document.getElementById('create-link-error');
-
-    // Search Elements
-    const searchInput = document.getElementById('search-input');
-    const searchBtn = document.getElementById('search-btn');
-    const searchResultsList = document.getElementById('search-results-list');
-    const searchErrorElement = document.getElementById('search-error');
-
-    // --- NEW: AI Suggestion Display Elements ---
     const aiSuggestionIndicatorElement = document.getElementById('ai-suggestion-indicator');
     const aiSuggestedTypeTextElement = document.getElementById('ai-suggested-type-text');
     const aiSuggestionReasoningElement = document.getElementById('ai-suggestion-reasoning');
     const applyAiSuggestionLink = document.getElementById('apply-ai-suggestion-link');
-    console.log("aiSuggestionIndicatorElement:", aiSuggestionIndicatorElement);
-    console.log("aiSuggestedTypeTextElement:", aiSuggestedTypeTextElement);
-    console.log("aiSuggestionReasoningElement:", aiSuggestionReasoningElement);
-    console.log("applyAiSuggestionLink:", applyAiSuggestionLink);
-    // -----------------------------------------
+    const editFormAiSuggestionElement = document.getElementById('edit-form-ai-suggestion');
 
-    // --- Global State (Simple) ---
+
     let currentNote = null;
     let notesCache = [];
 
-    // --- API Helper ---
     async function apiCall(url, options = {}) {
         try {
             const response = await fetch(url, options);
@@ -78,7 +62,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 try {
                     const errorJson = await response.json();
                     errorDetail = errorJson.detail || errorDetail;
-                } catch (e) { /* Ignore if response body isn't JSON */ }
+                } catch (e) { /* Ignore */ }
                 throw new Error(errorDetail);
             }
             if (response.status === 204) return null;
@@ -89,7 +73,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // --- UI Update Functions ---
     function displayNoteList(notes) {
         notesListElement.innerHTML = '';
         if (!notes || notes.length === 0) {
@@ -101,9 +84,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const listItem = document.createElement('li');
             listItem.textContent = `[${note.memory_type}] ${note.id.substring(0,8)}...`;
             listItem.dataset.noteId = note.id;
-            if (currentNote && currentNote.id === note.id) {
-                listItem.classList.add('active');
-            }
+            if (currentNote && currentNote.id === note.id) listItem.classList.add('active');
             listItem.addEventListener('click', () => handleNoteSelection(note.id));
             notesListElement.appendChild(listItem);
         });
@@ -113,47 +94,10 @@ document.addEventListener('DOMContentLoaded', () => {
         currentNote = note;
         noteTitleElement.textContent = `Note: ${note.id}`;
         noteContentDisplayElement.textContent = note.content;
-        noteMemoryTypeElement.textContent = note.memory_type; // Current type
+        noteMemoryTypeElement.textContent = note.memory_type;
         noteArchivedElement.textContent = note.is_archived ? 'Yes' : 'No';
         noteCreatedElement.textContent = new Date(note.created_at).toLocaleString();
         noteUpdatedElement.textContent = new Date(note.updated_at).toLocaleString();
-
-           // --- Display AI Suggestion ---
-     console.log("Inside displayNoteDetail - note.ai_suggestion:", note.ai_suggestion); // What does the note object contain?
-
-     if (aiSuggestionIndicatorElement && aiSuggestedTypeTextElement && aiSuggestionReasoningElement && applyAiSuggestionLink) {
-         console.log("All AI suggestion DOM elements found."); // Confirm elements are not null
-         if (note.ai_suggestion && note.ai_suggestion.suggested_type) {
-             console.log("AI suggestion object and suggested_type found in note data."); // Confirm data exists
-             const suggested = note.ai_suggestion.suggested_type;
-             const reasoning = note.ai_suggestion.reasoning || "No reasoning provided.";
-
-             console.log(`Setting AI suggestion: Type='${suggested}', Reasoning='${reasoning}'`);
-             aiSuggestedTypeTextElement.textContent = suggested;
-             aiSuggestionReasoningElement.textContent = `Reasoning: ${reasoning}`;
-
-             console.log("Making AI suggestion indicator and reasoning visible.");
-             aiSuggestionIndicatorElement.classList.remove('hidden');
-             aiSuggestionReasoningElement.classList.remove('hidden');
-
-             if (note.memory_type !== suggested) {
-                 console.log("Current type differs from AI suggestion. Showing apply link.");
-                 applyAiSuggestionLink.classList.remove('hidden');
-                 // TODO: Add onclick handler for applyAiSuggestionLink in the next step
-             } else {
-                 console.log("Current type matches AI suggestion. Hiding apply link.");
-                 applyAiSuggestionLink.classList.add('hidden');
-             }
-         } else {
-             console.log("No AI suggestion in note data OR suggested_type is missing. Hiding AI elements.");
-             aiSuggestionIndicatorElement.classList.add('hidden');
-             aiSuggestionReasoningElement.classList.add('hidden');
-             applyAiSuggestionLink.classList.add('hidden');
-         }
-     } else {
-         console.error("One or more AI suggestion DOM elements are missing!"); // Critical if this happens
-     }
-     // --- End Display AI Suggestion ---
 
         noteTagsElement.innerHTML = '';
         if (note.tags && note.tags.length > 0) {
@@ -172,49 +116,49 @@ document.addEventListener('DOMContentLoaded', () => {
             noteTagsElement.textContent = 'None';
         }
 
-        // --- MODIFIED: Display AI Suggestion ---
         if (aiSuggestionIndicatorElement && aiSuggestedTypeTextElement && aiSuggestionReasoningElement && applyAiSuggestionLink) {
             if (note.ai_suggestion && note.ai_suggestion.suggested_type) {
                 const suggested = note.ai_suggestion.suggested_type;
                 const reasoning = note.ai_suggestion.reasoning || "No reasoning provided.";
-
                 aiSuggestedTypeTextElement.textContent = suggested;
                 aiSuggestionReasoningElement.textContent = `Reasoning: ${reasoning}`;
                 aiSuggestionIndicatorElement.classList.remove('hidden');
                 aiSuggestionReasoningElement.classList.remove('hidden');
-
-                // Only show "Apply" link if suggestion is different from current type
                 if (note.memory_type !== suggested) {
                     applyAiSuggestionLink.classList.remove('hidden');
-                    // TODO: Add onclick handler for applyAiSuggestionLink in the next step
+                    applyAiSuggestionLink.onclick = async (e) => {
+                        e.preventDefault();
+                        if (confirm(`Apply AI suggestion: '${suggested}' for this note?`)) {
+                            await handleUpdateNoteType(note.id, suggested, note.ai_suggestion);
+                        }
+                    };
                 } else {
                     applyAiSuggestionLink.classList.add('hidden');
                 }
             } else {
-                // No AI suggestion or elements missing, hide them all
                 aiSuggestionIndicatorElement.classList.add('hidden');
                 aiSuggestionReasoningElement.classList.add('hidden');
                 applyAiSuggestionLink.classList.add('hidden');
             }
         }
-        // --- End Display AI Suggestion ---
-
 
         archiveNoteBtn.textContent = note.is_archived ? 'Unarchive' : 'Archive';
-        archiveNoteBtn.dataset.noteId = note.id;
-        archiveNoteBtn.disabled = false;
-        deleteNoteBtn.dataset.noteId = note.id;
-        deleteNoteBtn.disabled = false;
-        addTagBtn.disabled = false;
-        createLinkBtn.disabled = false;
-        addTagInput.value = '';
-        linkTargetNoteIdInput.value = '';
+        if(archiveNoteBtn) archiveNoteBtn.dataset.noteId = note.id;
+        if(archiveNoteBtn) archiveNoteBtn.disabled = false;
+        if(deleteNoteBtn) deleteNoteBtn.dataset.noteId = note.id;
+        if(deleteNoteBtn) deleteNoteBtn.disabled = false;
+        if(addTagBtn) addTagBtn.disabled = false;
+        if(createLinkBtn) createLinkBtn.disabled = false;
+        if(addTagInput) addTagInput.value = '';
+        if(linkTargetNoteIdInput) linkTargetNoteIdInput.value = '';
         if(addTagErrorElement) hideError(addTagErrorElement);
         if(createLinkErrorElement) hideError(createLinkErrorElement);
 
         noteDetailElement.classList.remove('hidden');
-        editFormContainer.classList.add('hidden');
-        noteDetailPlaceholder.classList.add('hidden');
+        if(editFormContainer) editFormContainer.classList.add('hidden');
+        if(noteDetailPlaceholder) noteDetailPlaceholder.classList.add('hidden');
+        if(createFormContainer) createFormContainer.classList.add('hidden');
+
 
         fetchAndDisplayLinks(note.id);
         highlightSelectedNote(note.id);
@@ -270,60 +214,55 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function showCreateForm() {
-        createFormContainer.classList.remove('hidden');
-        noteDetailElement.classList.add('hidden');
-        noteDetailPlaceholder.classList.remove('hidden');
-        editFormContainer.classList.add('hidden');
+        if(createFormContainer) createFormContainer.classList.remove('hidden');
+        if(noteDetailElement) noteDetailElement.classList.add('hidden');
+        if(noteDetailPlaceholder) noteDetailPlaceholder.classList.remove('hidden');
+        if(editFormContainer) editFormContainer.classList.add('hidden');
         if(createErrorElement) hideError(createErrorElement);
-        createForm.reset();
+        if(createForm) createForm.reset();
         currentNote = null;
         highlightSelectedNote(null);
     }
 
     function hideCreateForm() {
-        createFormContainer.classList.add('hidden');
-        if (!currentNote) {
+        if(createFormContainer) createFormContainer.classList.add('hidden');
+        if (!currentNote && noteDetailPlaceholder) {
             noteDetailPlaceholder.classList.remove('hidden');
-        } else {
+        } else if (currentNote && noteDetailElement) {
             noteDetailElement.classList.remove('hidden');
         }
     }
 
     function showEditForm() {
         if (!currentNote) return;
-        editNoteIdInput.value = currentNote.id;
-        editContentInput.value = currentNote.content;
-        editMemoryTypeInput.value = currentNote.memory_type;
+        if(editNoteIdInput) editNoteIdInput.value = currentNote.id;
+        if(editContentInput) editContentInput.value = currentNote.content;
+        if(editMemoryTypeInput) editMemoryTypeInput.value = currentNote.memory_type;
 
-        // --- NEW: Display AI Suggestion Hint in Edit Form ---
-        const editFormAiSuggestionElement = document.getElementById('edit-form-ai-suggestion'); // Assuming this ID exists in HTML
         if (editFormAiSuggestionElement) {
             if (currentNote.ai_suggestion &&
                 currentNote.ai_suggestion.suggested_type &&
                 currentNote.ai_suggestion.suggested_type !== currentNote.memory_type) {
-                editFormAiSuggestionElement.textContent =
-                    `(AI originally suggested: ${currentNote.ai_suggestion.suggested_type})`;
+                editFormAiSuggestionElement.textContent = `(AI originally suggested: ${currentNote.ai_suggestion.suggested_type})`;
                 editFormAiSuggestionElement.classList.remove('hidden');
             } else {
                 editFormAiSuggestionElement.classList.add('hidden');
                 editFormAiSuggestionElement.textContent = '';
             }
         }
-        // --- End Display AI Suggestion Hint ---
 
-
-        noteDetailElement.classList.add('hidden');
-        createFormContainer.classList.add('hidden');
-        editFormContainer.classList.remove('hidden');
-        noteDetailPlaceholder.classList.add('hidden');
+        if(noteDetailElement) noteDetailElement.classList.add('hidden');
+        if(createFormContainer) createFormContainer.classList.add('hidden');
+        if(editFormContainer) editFormContainer.classList.remove('hidden');
+        if(noteDetailPlaceholder) noteDetailPlaceholder.classList.add('hidden');
         if(editErrorElement) hideError(editErrorElement);
     }
 
     function hideEditForm() {
-        editFormContainer.classList.add('hidden');
-        if (currentNote) {
+        if(editFormContainer) editFormContainer.classList.add('hidden');
+        if (currentNote && noteDetailElement) {
              noteDetailElement.classList.remove('hidden');
-        } else {
+        } else if (noteDetailPlaceholder) {
              noteDetailPlaceholder.classList.remove('hidden');
         }
     }
@@ -355,22 +294,76 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    async function logAiCategorizationFeedback(noteId, noteContent, aiSuggestion, userChosenType) {
+        if (!noteId || !userChosenType) {
+            console.warn("Cannot log feedback: Missing noteId or userChosenType");
+            return;
+        }
+        const contentSnippet = noteContent ? noteContent.substring(0, 500) + (noteContent.length > 500 ? "..." : "") : null;
+        const feedbackData = {
+            note_id: noteId,
+            note_content_snippet: contentSnippet,
+            ai_suggested_type: aiSuggestion ? aiSuggestion.suggested_type : null,
+            ai_reasoning: aiSuggestion ? aiSuggestion.reasoning : null,
+            user_chosen_type: userChosenType
+        };
+        console.log("Logging AI categorization feedback:", feedbackData);
+        try {
+            await apiCall('/ai-tools/categorization-feedback', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(feedbackData)
+            });
+            console.log("AI categorization feedback logged successfully.");
+        } catch (error) {
+            console.error("Error logging AI categorization feedback:", error);
+        }
+    }
+
+    async function handleUpdateNoteType(noteId, newMemoryType, originalAiSuggestionObject) {
+        console.log(`User applying/changing memory type for note ${noteId} to ${newMemoryType}`);
+        try {
+            const noteBeingUpdated = notesCache.find(n => n.id === noteId) || currentNote;
+            if (!noteBeingUpdated) {
+                console.error("Could not find note object to get content for feedback.");
+                alert("Error: Could not find note data for feedback.");
+                return;
+            }
+            const updatedNoteFromAPI = await apiCall(`/notes/${noteId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ memory_type: newMemoryType })
+            });
+            await logAiCategorizationFeedback(
+                noteId,
+                noteBeingUpdated.content,
+                originalAiSuggestionObject,
+                newMemoryType
+            );
+            const displayableNote = {...updatedNoteFromAPI, ai_suggestion: originalAiSuggestionObject };
+            displayNoteDetail(displayableNote);
+            await fetchAndDisplayNotes();
+        } catch (error) {
+            console.error(`Error updating note type for ${noteId}:`, error);
+            alert(`Failed to update memory type: ${error.message}`);
+        }
+    }
+
     // --- Event Handlers ---
     async function handleNoteSelection(noteId) {
         console.log(`Selecting note detail for ID: ${noteId}`);
         if(createErrorElement) hideError(createErrorElement);
         if(editErrorElement) hideError(editErrorElement);
         if(noteDetailPlaceholder) noteDetailPlaceholder.classList.add('hidden');
-
         try {
-            const note = await apiCall(`/notes/${noteId}`); // This response now includes ai_suggestion
+            const note = await apiCall(`/notes/${noteId}`);
             if (note) {
-                 displayNoteDetail(note); // displayNoteDetail now handles showing the suggestion
+                 displayNoteDetail(note);
             } else {
                  console.warn(`Note ${noteId} not found when fetching detail.`);
                  await fetchAndDisplayNotes();
                  if(noteDetailPlaceholder) noteDetailPlaceholder.classList.remove('hidden');
-                 noteDetailElement.classList.add('hidden');
+                 if(noteDetailElement) noteDetailElement.classList.add('hidden');
                  currentNote = null;
                  highlightSelectedNote(null);
             }
@@ -379,7 +372,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 showError(noteDetailPlaceholder, `Error loading note: ${error.message}`);
                 noteDetailPlaceholder.classList.remove('hidden');
             }
-            noteDetailElement.classList.add('hidden');
+            if(noteDetailElement) noteDetailElement.classList.add('hidden');
             currentNote = null;
             highlightSelectedNote(null);
         }
@@ -388,33 +381,32 @@ document.addEventListener('DOMContentLoaded', () => {
     async function handleCreateNote(event) {
         event.preventDefault();
         if(createErrorElement) hideError(createErrorElement);
-        const noteDataFromForm = { // Renamed for clarity
+        const noteDataFromForm = {
             content: createContentInput.value.trim(),
             memory_type: createMemoryTypeInput.value
         };
         if (!noteDataFromForm.content) {
-            showError(createErrorElement, "Content cannot be empty.");
+            if(createErrorElement) showError(createErrorElement, "Content cannot be empty.");
             return;
         }
         try {
-            const createdNoteWithSuggestion = await apiCall('/notes/', { // API returns note with ai_suggestion
+            const createdNoteWithSuggestion = await apiCall('/notes/', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(noteDataFromForm)
             });
-            console.log("Note created (with potential AI suggestion):", createdNoteWithSuggestion);
-
-            // TODO: Implement feedback logging in the next step using:
-            // createdNoteWithSuggestion.id
-            // createdNoteWithSuggestion.content
-            // createdNoteWithSuggestion.ai_suggestion (the object)
-            // noteDataFromForm.memory_type (user's initial choice from form)
-
+            console.log("Note created:", createdNoteWithSuggestion);
+            await logAiCategorizationFeedback(
+                createdNoteWithSuggestion.id,
+                createdNoteWithSuggestion.content,
+                createdNoteWithSuggestion.ai_suggestion,
+                noteDataFromForm.memory_type
+            );
             hideCreateForm();
             await fetchAndDisplayNotes();
-            handleNoteSelection(createdNoteWithSuggestion.id); // This will display the suggestion via displayNoteDetail
+            handleNoteSelection(createdNoteWithSuggestion.id);
         } catch (error) {
-            showError(createErrorElement, `Failed to create note: ${error.message}`);
+            if(createErrorElement) showError(createErrorElement, `Failed to create note: ${error.message}`);
         }
     }
 
@@ -422,32 +414,36 @@ document.addEventListener('DOMContentLoaded', () => {
         event.preventDefault();
         if(editErrorElement) hideError(editErrorElement);
         const noteId = editNoteIdInput.value;
-        const editedNoteData = { // Renamed for clarity
+        const editedNoteDataFromForm = {
             content: editContentInput.value.trim(),
             memory_type: editMemoryTypeInput.value
         };
-        if (!editedNoteData.content) {
-             showError(editErrorElement, "Content cannot be empty.");
+        if (!editedNoteDataFromForm.content) {
+             if(editErrorElement) showError(editErrorElement, "Content cannot be empty.");
             return;
         }
         try {
-            const updatedNoteWithSuggestion = await apiCall(`/notes/${noteId}`, { // API might return updated suggestion if content changed
+            const originalMemoryTypeBeforeEdit = currentNote ? currentNote.memory_type : null;
+            const originalAiSuggestionForThisNote = currentNote ? currentNote.ai_suggestion : null;
+            const updatedNoteFromAPI = await apiCall(`/notes/${noteId}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(editedNoteData)
+                body: JSON.stringify(editedNoteDataFromForm)
             });
-            console.log("Note updated:", updatedNoteWithSuggestion);
-
-            // TODO: Implement feedback logging in the next step using:
-            // updatedNoteWithSuggestion.id
-            // updatedNoteWithSuggestion.content
-            // currentNote.ai_suggestion (original suggestion before this edit)
-            // editedNoteData.memory_type (user's newly chosen type)
-
-            displayNoteDetail(updatedNoteWithSuggestion);
+            console.log("Note updated:", updatedNoteFromAPI);
+            if (currentNote && originalMemoryTypeBeforeEdit !== editedNoteDataFromForm.memory_type) {
+                await logAiCategorizationFeedback(
+                    updatedNoteFromAPI.id,
+                    updatedNoteFromAPI.content,
+                    originalAiSuggestionForThisNote,
+                    editedNoteDataFromForm.memory_type
+                );
+            }
+            const displayableNote = {...updatedNoteFromAPI, ai_suggestion: originalAiSuggestionForThisNote };
+            displayNoteDetail(displayableNote);
             await fetchAndDisplayNotes();
         } catch (error) {
-            showError(editErrorElement, `Failed to update note: ${error.message}`);
+            if(editErrorElement) showError(editErrorElement, `Failed to update note: ${error.message}`);
         }
     }
 
@@ -468,13 +464,13 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             displaySearchResults(responseData.results);
         } catch (error) {
-            showError(searchErrorElement, `Search failed: ${error.message}`);
+            if(searchErrorElement) showError(searchErrorElement, `Search failed: ${error.message}`);
             searchResultsList.innerHTML = '<li>Search failed.</li>';
         }
     }
 
     async function handleToggleArchive() {
-        if (!currentNote) return;
+        if (!currentNote || !archiveNoteBtn) return;
         const noteId = currentNote.id;
         const isArchived = currentNote.is_archived;
         const action = isArchived ? 'unarchive' : 'archive';
@@ -484,7 +480,7 @@ document.addEventListener('DOMContentLoaded', () => {
         archiveNoteBtn.textContent = `${action.charAt(0).toUpperCase() + action.slice(1)}ing...`;
         try {
             const updatedNote = await apiCall(`/notes/${noteId}/${action}`, { method: 'POST' });
-            displayNoteDetail(updatedNote); // API response includes AI suggestion
+            displayNoteDetail(updatedNote);
             await fetchAndDisplayNotes();
         } catch (error) {
             alert(`Error ${action}ing note: ${error.message}`);
@@ -494,7 +490,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function handleDeleteNote() {
-        if (!currentNote) return;
+        if (!currentNote || !deleteNoteBtn) return;
         const noteId = currentNote.id;
         const confirmation1 = confirm(`PERMANENTLY DELETE NOTE ${noteId}? This cannot be undone.`);
         if (!confirmation1) return;
@@ -509,21 +505,23 @@ document.addEventListener('DOMContentLoaded', () => {
             await apiCall(`/notes/${noteId}/permanent`, { method: 'DELETE' });
             alert(`Note ${noteId} permanently deleted.`);
             currentNote = null;
-            noteDetailElement.classList.add('hidden');
+            if(noteDetailElement) noteDetailElement.classList.add('hidden');
             if(noteDetailPlaceholder) {
                 noteDetailPlaceholder.textContent = `Note ${noteId} deleted. Select another.`;
                 noteDetailPlaceholder.classList.remove('hidden');
             }
-            archiveNoteBtn.disabled = true;
-            deleteNoteBtn.disabled = true;
-            addTagBtn.disabled = true;
-            createLinkBtn.disabled = true;
-            deleteNoteBtn.textContent = 'Delete';
+            if(archiveNoteBtn) archiveNoteBtn.disabled = true;
+            if(deleteNoteBtn) deleteNoteBtn.disabled = true;
+            if(addTagBtn) addTagBtn.disabled = true;
+            if(createLinkBtn) createLinkBtn.disabled = true;
+            if(deleteNoteBtn) deleteNoteBtn.textContent = 'Delete';
             await fetchAndDisplayNotes();
         } catch (error) {
             alert(`Error deleting note: ${error.message}`);
-            deleteNoteBtn.disabled = false;
-            deleteNoteBtn.textContent = 'Delete';
+            if(deleteNoteBtn) {
+                deleteNoteBtn.disabled = false;
+                deleteNoteBtn.textContent = 'Delete';
+            }
         }
     }
 
@@ -531,15 +529,15 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!confirm(`Remove tag ID ${tagId} from this note?`)) return;
         try {
             const updatedNote = await apiCall(`/notes/${noteId}/tags/${tagId}`, { method: 'DELETE' });
-            displayNoteDetail(updatedNote); // API response includes AI suggestion
+            displayNoteDetail(updatedNote);
         } catch (error) {
              alert(`Error removing tag: ${error.message}`);
         }
     }
 
     async function handleAddTag() {
-        if (!currentNote) return;
-        if(addTagErrorElement) hideError(addTagErrorElement);
+        if (!currentNote || !addTagBtn || !addTagErrorElement) return;
+        hideError(addTagErrorElement);
         const noteId = currentNote.id;
         const tagInputVal = addTagInput.value.trim();
         if (!tagInputVal) {
@@ -555,7 +553,7 @@ document.addEventListener('DOMContentLoaded', () => {
         addTagBtn.textContent = 'Adding...';
         try {
             const updatedNote = await apiCall(`/notes/${noteId}/tags/${tagId}`, { method: 'POST' });
-            displayNoteDetail(updatedNote); // API response includes AI suggestion
+            displayNoteDetail(updatedNote);
             addTagInput.value = '';
         } catch (error) {
             showError(addTagErrorElement, `Failed: ${error.message}`);
@@ -566,8 +564,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function handleCreateLink() {
-        if (!currentNote) return;
-        if(createLinkErrorElement) hideError(createLinkErrorElement);
+        if (!currentNote || !createLinkBtn || !createLinkErrorElement) return;
+        hideError(createLinkErrorElement);
         const sourceNoteId = currentNote.id;
         const targetNoteId = linkTargetNoteIdInput.value.trim();
         if (!targetNoteId) {
@@ -586,7 +584,7 @@ document.addEventListener('DOMContentLoaded', () => {
         createLinkBtn.textContent = 'Linking...';
         try {
             await apiCall(`/notes/${sourceNoteId}/links/${targetNoteId}`, { method: 'POST' });
-            await fetchAndDisplayLinks(sourceNoteId); // Refresh links
+            await fetchAndDisplayLinks(sourceNoteId);
             linkTargetNoteIdInput.value = '';
         } catch (error) {
             showError(createLinkErrorElement, `Failed: ${error.message}`);
@@ -612,23 +610,24 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function fetchAndDisplayLinks(noteId) {
-        outgoingLinksList.innerHTML = '<li>Loading...</li>';
-        incomingLinksList.innerHTML = '<li>Loading...</li>';
+        if(outgoingLinksList) outgoingLinksList.innerHTML = '<li>Loading...</li>';
+        if(incomingLinksList) incomingLinksList.innerHTML = '<li>Loading...</li>';
         try {
             const [outgoing, incoming] = await Promise.all([
                 apiCall(`/notes/${noteId}/links/outgoing`),
                 apiCall(`/notes/${noteId}/links/incoming`)
             ]);
-            displayLinks(outgoingLinksList, outgoing);
-            displayLinks(incomingLinksList, incoming);
+            if(outgoingLinksList) displayLinks(outgoingLinksList, outgoing);
+            if(incomingLinksList) displayLinks(incomingLinksList, incoming);
         } catch (error) {
             console.error(`Error fetching links for note ${noteId}:`, error);
-            outgoingLinksList.innerHTML = '<li>Error loading links</li>';
-            incomingLinksList.innerHTML = '<li>Error loading links</li>';
+            if(outgoingLinksList) outgoingLinksList.innerHTML = '<li>Error loading links</li>';
+            if(incomingLinksList) incomingLinksList.innerHTML = '<li>Error loading links</li>';
         }
     }
 
     // --- Initial Setup & Event Listeners ---
+    // Null checks for all elements before adding listeners
     if (showCreateFormBtn) showCreateFormBtn.addEventListener('click', showCreateForm);
     if (cancelCreateBtn) cancelCreateBtn.addEventListener('click', hideCreateForm);
     if (createForm) createForm.addEventListener('submit', handleCreateNote);

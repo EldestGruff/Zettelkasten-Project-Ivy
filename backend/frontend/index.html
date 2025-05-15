@@ -14,15 +14,13 @@
         #main-view { flex-grow: 1; display: flex; flex-direction: column; gap: 1em; }
         .panel { background-color: #fff; padding: 1.5em; border-radius: 5px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; flex-direction: column; }
 
-        /* List styling */
-        #notes-list-container { flex-grow: 1; min-height: 200px; /* Ensure it has some height */ overflow-y: auto; border: 1px solid #dee2e6; margin-bottom: 1em; background-color: #fff; }
+        #notes-list-container { flex-grow: 1; min-height: 200px; overflow-y: auto; border: 1px solid #dee2e6; margin-bottom: 1em; background-color: #fff; }
         #notes-list { list-style: none; padding: 0; margin: 0; }
         #notes-list li { padding: 0.75em; cursor: pointer; border-bottom: 1px solid #f1f3f5; }
         #notes-list li:last-child { border-bottom: none; }
         #notes-list li:hover { background-color: #e9ecef; }
         #notes-list li.active { background-color: #e7f3ff; font-weight: bold; border-left: 3px solid #007bff; padding-left: calc(0.75em - 3px); }
 
-        /* Detail View Styling */
         #note-content-display { white-space: pre-wrap; background-color: #f9f9f9; padding: 1em; border: 1px solid #e0e0e0; min-height: 100px; margin-bottom: 1em; font-family: monospace; font-size: 0.95em; }
         .tag-list span { background-color: #e9ecef; padding: 0.2em 0.5em; border-radius: 0.25rem; margin-right: 0.5em; margin-bottom: 0.5em; display: inline-block; font-size: 0.9em;}
         .tag-list button { margin-left: 4px; cursor: pointer; border: none; background: #e74c3c; color: white; border-radius: 50%; font-size: 0.7em; width: 16px; height: 16px; line-height: 1; padding: 0; vertical-align: middle; }
@@ -34,12 +32,11 @@
         .metadata { font-size: 0.85em; color: #6c757d; margin-top: 1em; border-top: 1px solid #eee; padding-top: 0.5em; }
         .metadata span { margin-right: 10px; }
 
-        /* Form Styling */
         label { display: block; margin-bottom: 0.3em; font-weight: 600; color: #495057;}
         input[type="text"], input[type="search"], select, textarea { width: calc(100% - 1.2em); margin-bottom: 1em; padding: 0.6em; border: 1px solid #ced4da; border-radius: 0.25rem; font-size: 1em; box-sizing: border-box;}
-        input[type="search"] { -webkit-appearance: none; } /* Fix for Safari search input styling */
+        input[type="search"] { -webkit-appearance: none; }
         textarea { min-height: 150px; font-family: monospace; resize: vertical; }
-        select { height: calc(1.2em + 1.2em + 2px); /* Match padding of other inputs */}
+        select { height: calc(1.2em + 1.2em + 2px); }
         .button-group { margin-top: 1em; display: flex; gap: 0.5em; flex-wrap: wrap; justify-content: flex-start; }
         button { padding: 0.6em 1em; background-color: #007bff; color: white; border: none; border-radius: 0.25rem; cursor: pointer; font-size: 0.9em;}
         button:hover { background-color: #0056b3; }
@@ -49,9 +46,8 @@
         button.danger { background-color: #dc3545; }
         button.danger:hover { background-color: #c82333; }
         .error-message { color: #dc3545; font-size: 0.9em; margin-top: 0.5em; }
-        .hidden { display: none !important; } /* Use !important to ensure override */
+        .hidden { display: none !important; }
 
-        /* Search Results */
         #search-results-container { max-height: 250px; overflow-y: auto; }
         #search-results-list { list-style: none; padding: 0; }
         #search-results-list li { margin-bottom: 0.5em; padding: 0.5em; border-bottom: 1px dotted #eee; background-color: #f8f9fa; border-radius: 3px;}
@@ -59,19 +55,14 @@
         #search-results-list li a { font-weight: bold; }
         #search-results-list li small { color: #6c757d; display: block; margin-top: 0.2em; }
 
-        /* AI Suggestion Styling */
         #ai-suggestion-indicator { color: #17a2b8; }
         #ai-suggestion-indicator a { color: #007bff; text-decoration: underline; cursor: pointer; }
         #ai-suggestion-reasoning { background-color: #f0f8ff; padding: 0.5em; border-radius: 3px; border: 1px solid #cce5ff; }
         #edit-form-ai-suggestion { color: #17a2b8; }
-
     </style>
 </head>
 <body>
-
-    <div style="display: flex; flex-direction: column; width: 100%; max-height: 100vh;"> <!-- Wrapper for Search + Content -->
-
-        <!-- === Search Section === -->
+    <div style="display: flex; flex-direction: column; width: 100%; max-height: 100vh;">
         <div id="search-section" class="panel">
             <h3>Semantic Search</h3>
             <div style="display: flex; gap: 0.5em;">
@@ -79,46 +70,30 @@
                 <button id="search-btn">Search</button>
             </div>
             <div id="search-results-container" style="margin-top: 1em;">
-                <ul id="search-results-list">
-                    <!-- Search results will be loaded here -->
-                </ul>
+                <ul id="search-results-list"></ul>
                 <div id="search-error" class="error-message hidden"></div>
             </div>
         </div>
-        <!-- === End Search Section === -->
-
-        <!-- === Main Content Area === -->
         <div id="content-wrapper" style="flex-grow: 1; overflow: hidden;">
-
-            <!-- Sidebar for Notes List and Creation -->
             <div id="sidebar">
                 <div class="panel" style="flex-grow: 1; display: flex; flex-direction: column;">
                     <h2>Notes</h2>
                     <div id="notes-list-container">
-                        <ul id="notes-list">
-                            <li>Loading notes...</li>
-                        </ul>
+                        <ul id="notes-list"><li>Loading notes...</li></ul>
                     </div>
                      <div class="button-group">
                         <button id="show-create-form-btn">Create New Note</button>
                     </div>
                 </div>
-
-                <!-- Create Note Form (Initially Hidden) -->
                 <div id="note-create-form-container" class="panel hidden">
                     <h3>Create New Note</h3>
                     <form id="note-create-form">
-                        <div>
-                            <label for="create-content">Content:</label>
-                            <textarea id="create-content" required></textarea>
-                        </div>
+                        <div><label for="create-content">Content:</label><textarea id="create-content" required></textarea></div>
                         <div>
                             <label for="create-memory-type">Memory Type:</label>
                             <select id="create-memory-type">
-                                <option value="uncategorized">Uncategorized</option>
-                                <option value="semantic">Semantic</option>
-                                <option value="episodic">Episodic</option>
-                                <option value="procedural">Procedural</option>
+                                <option value="uncategorized">Uncategorized</option><option value="semantic">Semantic</option>
+                                <option value="episodic">Episodic</option><option value="procedural">Procedural</option>
                             </select>
                         </div>
                         <div class="button-group">
@@ -128,17 +103,9 @@
                          <div id="create-error" class="error-message hidden"></div>
                     </form>
                 </div>
-            </div> <!-- End Sidebar -->
-
-            <!-- Main View Area for Details and Editing -->
+            </div>
             <div id="main-view">
-
-                <!-- Placeholder when no note is selected -->
-                <div id="note-detail-placeholder" class="panel">
-                    Select a note to view details or create a new one.
-                </div>
-
-                <!-- Note Detail Display (Initially Hidden) -->
+                <div id="note-detail-placeholder" class="panel">Select a note to view details or create a new one.</div>
                 <div id="note-detail" class="panel hidden">
                     <h3 id="note-title"></h3>
                     <div class="button-group">
@@ -156,7 +123,6 @@
                         </span>
                     </p>
                     <div id="ai-suggestion-reasoning" class="hidden" style="font-style:italic; color: #666; font-size:0.85em; margin-left:0px; margin-bottom:10px; padding: 0.5em; background-color:#f0f8ff; border: 1px solid #cce5ff; border-radius:3px;"></div>
-
                     <p><strong>Archived:</strong> <span id="note-archived"></span></p>
                     <div style="margin-bottom: 0.5em;">
                         <strong>Tags:</strong>
@@ -175,36 +141,23 @@
                              <span id="create-link-error" class="error-message hidden" style="margin-left: 1em; display: inline-block;"></span>
                          </div>
                      </div>
-                    <div class="link-list" style="margin-top: 1em;">
-                        <strong>Links To (Outgoing):</strong>
-                        <ul id="note-links-outgoing"><li></li></ul>
-                    </div>
-                     <div class="link-list" style="margin-top: 1em;">
-                        <strong>Linked From (Incoming):</strong>
-                        <ul id="note-links-incoming"><li></li></ul>
-                    </div>
+                    <div class="link-list" style="margin-top: 1em;"><strong>Links To (Outgoing):</strong><ul id="note-links-outgoing"></ul></div>
+                    <div class="link-list" style="margin-top: 1em;"><strong>Linked From (Incoming):</strong><ul id="note-links-incoming"></ul></div>
                     <div class="metadata">
                         <span>Created: <span id="note-created"></span></span>
                         <span>Updated: <span id="note-updated"></span></span>
                     </div>
-                </div> <!-- End Note Detail -->
-
-                <!-- Edit Note Form (Initially Hidden) -->
+                </div>
                 <div id="note-edit-form-container" class="panel hidden">
                      <h3>Edit Note</h3>
                      <form id="note-edit-form">
                         <input type="hidden" id="edit-note-id">
-                        <div>
-                            <label for="edit-content">Content:</label>
-                            <textarea id="edit-content" required></textarea>
-                        </div>
+                        <div><label for="edit-content">Content:</label><textarea id="edit-content" required></textarea></div>
                         <div>
                             <label for="edit-memory-type">Memory Type:</label>
                             <select id="edit-memory-type">
-                                <option value="uncategorized">Uncategorized</option>
-                                <option value="semantic">Semantic</option>
-                                <option value="episodic">Episodic</option>
-                                <option value="procedural">Procedural</option>
+                                <option value="uncategorized">Uncategorized</option><option value="semantic">Semantic</option>
+                                <option value="episodic">Episodic</option><option value="procedural">Procedural</option>
                             </select>
                             <span id="edit-form-ai-suggestion" class="hidden" style="font-size:0.8em; margin-left:10px; color: #17a2b8; font-style: italic;"></span>
                         </div>
@@ -214,14 +167,10 @@
                         </div>
                          <div id="edit-error" class="error-message hidden"></div>
                      </form>
-                </div> <!-- End Edit Form -->
-
-            </div> <!-- End Main View -->
-
-        </div> <!-- End Content Wrapper -->
-
-    </div> <!-- End Page Wrapper -->
-
+                </div>
+            </div>
+        </div>
+    </div>
     <script src="/static/js/app.js"></script>
 </body>
 </html>
