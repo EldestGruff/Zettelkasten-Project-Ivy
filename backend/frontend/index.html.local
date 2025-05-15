@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <!-- Primary Meta -->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Ivy - Zettelkasten Second Brain Interface. Knowledge management system with semantic search and AI integration.">
+    
+    <title>Ivy - Second Brain</title>
+    
+    <!-- External Resources -->
+    <link rel="stylesheet" href="/static/css/styles.css">
+    
+    <!-- Inline Critical CSS (Temporary until styles.css populated) -->
+    <style>
+        /* System Design Tokens */
+        :root {
+            --color-primary: #2b3d5a;
+            --color-secondary: #4a6572;
+            --color-accent: #f7931e;
+            --surface-1: #f8f9fa;
+            --text-primary: #1a1a1a;
+        }
+
+        /* Accessibility Foundations */
+        [data-theme="light"] { color-scheme: light; }
+        [data-theme="dark"] { color-scheme: dark; }
+        
+        /* Remainder of existing styles... */
+    </style>
+</head>
+
+<body>
+    <!-- App Container -->
+    <div class="app-container" role="main">
+        
+        <!-- Semantic Search Section -->
+        <section aria-labelledby="search-heading" class="panel search-panel">
+            <h2 id="search-heading" class="visually-hidden">Semantic Search</h2>
+            
+            <div class="search-input-group">
+                <label for="search-input" class="visually-hidden">Search notes</label>
+                <input type="search" 
+                       id="search-input" 
+                       placeholder="Search note content..." 
+                       aria-describedby="search-instructions">
+                
+                <button id="search-btn" 
+                        aria-label="Perform semantic search"
+                        data-analytics-event="searchTriggered">
+                    Search
+                </button>
+            </div>
+            
+            <!-- Search Results Region --> 
+            <div id="search-results-container" 
+                 role="region" 
+                 aria-live="polite"
+                 aria-atomic="true">
+                <ul id="search-results-list" role="list"></ul>
+                <div id="search-error" class="error-message hidden" role="alert"></div>
+            </div>
+            
+            <p id="search-instructions" class="visually-hidden">
+                Search uses semantic similarity powered by AI embeddings. 
+                Results are ranked by conceptual relevance.
+            </p>
+        </section>
+
+        <!-- Main Content Grid -->
+        <div class="content-grid">
+            
+            <!-- Navigation Sidebar -->
+            <aside class="app-sidebar" aria-label="Notes management">
+                <section aria-labelledby="notes-list-heading">
+                    <h3 id="notes-list-heading">Active Notes</h3>
+                    <div id="notes-list-container">
+                        <ul id="notes-list" role="list"></ul>
+                    </div>
+                </section>
+                
+                <!-- Note Creation Section -->
+                <section aria-labelledby="create-note-heading">
+                    <h3 id="create-note-heading">New Note</h3>
+                    <div id="note-create-form-container">
+                        <!-- Form structure preserved with ARIA labels -->
+                    </div>
+                </section>
+            </aside>
+
+            <!-- Primary Note Workspace -->
+            <article class="note-workspace" aria-label="Note detail view">
+                <div id="note-detail-placeholder" 
+                     role="status"
+                     aria-live="polite">
+                    Select or create a note to begin
+                </div>
+                
+                <!-- Dynamic Note Content -->
+                <div id="note-detail" class="hidden">
+                    <!-- Enhanced semantic markup for note metadata -->
+                    <dl class="note-metadata">
+                        <dt>Memory Type:</dt>
+                        <dd id="note-memory-type" aria-label="Memory type"></dd>
+                        
+                        <dt>Created:</dt> 
+                        <dd id="note-created" aria-label="Creation date"></dd>
+                    </dl>
+                </div>
+            </article>
+        </div>
+    </div>
+
+    <!-- Async Script Loading -->
+    <script src="/static/js/app.js" 
+            async 
+            defer 
+            crossorigin="anonymous"></script>
+</body>
+</html>

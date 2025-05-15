@@ -1,5 +1,4 @@
 # ~/zettelkasten-project/docker-compose.yml
-version: '3.8'
 
 services:
   postgres:
@@ -51,7 +50,7 @@ services:
   # Ollama service is removed as it's running natively on the host
 
   backend:
-    container_name: zettelkasten-backend # Changed from zettelkasten-backend-1
+    container_name: zettelkasten-backend
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -61,15 +60,16 @@ services:
       # For connections from backend container to other services:
       POSTGRES_SERVER: postgres         # Service name for Postgres
       QDRANT_HOST: qdrant             # Service name for Qdrant
+      DATABASE_URL: "postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}"
       # --- For backend container to connect to NATIVE Ollama on HOST ---
       OLLAMA_API_BASE_URL: http://host.docker.internal:11434
-      # These are loaded from .env or have defaults in config.py, used by Settings
       # POSTGRES_USER: ${POSTGRES_USER}
       # POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       # POSTGRES_DB: ${POSTGRES_DB}
-      # EMBEDDING_MODEL_NAME: ${EMBEDDING_MODEL_NAME}
-      # CATEGORIZATION_MODEL_NAME: ${CATEGORIZATION_MODEL_NAME}
-      # QDRANT_COLLECTION_NAME: ${QDRANT_COLLECTION_NAME}
+      
+      EMBEDDING_MODEL_NAME: ${EMBEDDING_MODEL_NAME}
+      CATEGORIZATION_MODEL_NAME: ${CATEGORIZATION_MODEL_NAME}
+      QDRANT_COLLECTION_NAME: ${QDRANT_COLLECTION_NAME}
       TZ: ${TZ:-Etc/UTC}
     ports:
       # Map backend's port 8000 to host's port 8000 (accessible via localhost:8000 on Mac)

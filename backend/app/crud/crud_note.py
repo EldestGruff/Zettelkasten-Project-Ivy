@@ -10,6 +10,8 @@ from qdrant_client import QdrantClient, models as qdrant_models
 from app.db.vector_store import get_qdrant_client
 from app.core.config import settings
 from app.services.embedding import get_embedding
+from app.services.ai_categorization import suggest_memory_type
+from app.services.ai_summarization import generate_note_summary
 
 # Import models and schemas
 from app.models.note import Note
@@ -143,100 +145,158 @@ async def _delete_vector(note_id: uuid.UUID) -> bool:
 # --- Create Operation ---
 
 async def create_note(db: Session, *, note_in: NoteCreate) -> Note:
-    """Create a new note and its vector embedding."""
-    # Log the incoming request details
-    logger.info(f"Creating new note with memory_type: {note_in.memory_type}")
-    logger.debug(f"Note content length: {len(note_in.content) if note_in.content else 0}")
-    
-    # Create the note in the database
-    db_note = Note(**note_in.model_dump())
+    """Create a new note, get AI suggestion, generate summary, and store vector embedding."""
+    db_note = Note(
+        content=note_in.content,
+        memory_type=note_in.memory_type
+    )
     db.add(db_note)
     db.commit()
     db.refresh(db_note)
-    logger.info(f"Created note in database with ID: {db_note.id}")
-    
-    # Add a small delay to ensure transaction visibility (testing for race conditions)
-    time.sleep(0.1)
-    
-    # Generate embedding and store in vector DB
+
+    # --- Get AI suggestion & SAVE to DB ---
+    if db_note.content: # Only if content exists
+        try:
+            ai_suggestion_dict = await suggest_memory_type(db_note.content)
+            if ai_suggestion_dict:
+                db_note.ai_suggested_memory_type = MemoryTypeEnum[ai_suggestion_dict["suggested_type"]]
+                db_note.ai_suggestion_reasoning = ai_suggestion_dict.get("reasoning")
+                # No separate commit yet, will bundle with summary or do at end
+            else:
+                print(f"No AI suggestion for new note {db_note.id}.")
+        except Exception as ai_e:
+            print(f"ERROR during AI categorization for new note {db_note.id}: {ai_e}")
+
+    print(f"DEBUG crud_note: Attempting to generate summary for note {db_note.id}. Content exists: {bool(db_note.content)}")
+
+    # --- Generate and SAVE Summary ---
+    if db_note.content: # Only if content exists
+        try:
+            summary_text = await generate_note_summary(db_note.content)
+            if summary_text:
+                db_note.summary = summary_text
+                print(f"Generated summary for new note {db_note.id}: '{summary_text[:50]}...'")
+            else:
+                print(f"Failed to generate summary for new note {db_note.id}.")
+        except Exception as sum_e:
+            print(f"ERROR during summary generation for new note {db_note.id}: {sum_e}")
+    # -------------------------------
+
+    # --- Commit suggestion and summary (if any) ---
+    if db_note.ai_suggested_memory_type or db_note.summary:
+        db.add(db_note) # Ensure it's in session if changes were made
+        db.commit()
+        db.refresh(db_note)
+    # --------------------------------------------
+
+    # --- Add Embedding and Qdrant Upsert ---
+    # ... (existing Qdrant upsert logic - check if payload needs db_note.summary) ...
+    # For Qdrant payload, consider if summary should be part of it
     try:
-        # Special debug for semantic type notes
-        if db_note.memory_type == MemoryTypeEnum.semantic:
-            logger.info(f"Processing semantic note {db_note.id} - special handling")
-            
-        # Generate embedding
-        logger.debug(f"Generating embedding for note {db_note.id}")
-        embedding = await get_embedding(db_note.content)
-        
+        embedding = await get_embedding(db_note.content) # Embed full content
         if embedding:
-            logger.info(f"Generated embedding for note {db_note.id}, dimensions: {len(embedding)}")
-            success = await _upsert_vector(db_note, embedding)
-            if not success:
-                logger.warning(f"Note {db_note.id} created in database but vector storage failed")
-        else:
-            logger.warning(f"Failed to generate embedding for note {db_note.id}, vector not stored")
+            qdrant_client = get_qdrant_client()
+            payload_for_qdrant = {
+                "memory_type": db_note.memory_type.value,
+                "is_archived": db_note.is_archived,
+                "ai_suggested_type": db_note.ai_suggested_memory_type.value if db_note.ai_suggested_memory_type else None,
+                # "summary_preview": db_note.summary[:100] if db_note.summary else None # Optional: add summary snippet to Qdrant payload
+            }
+            qdrant_client.upsert(
+                collection_name=settings.QDRANT_COLLECTION_NAME,
+                points=[
+                    qdrant_models.PointStruct(
+                        id=str(db_note.id),
+                        vector=embedding,
+                        payload=payload_for_qdrant
+                    )
+                ],
+                wait=True
+            )
+            print(f"Upserted vector for new note {db_note.id} into Qdrant.")
+        # ... (rest of embedding error handling) ...
     except Exception as e:
-        # Catch any other exceptions that might occur
-        logger.error(f"Error during embedding/vector operations for note {db_note.id}: {e}", exc_info=True)
-    
+        print(f"ERROR: Failed to upsert vector for new note {db_note.id} to Qdrant: {e}")
+
     return db_note
 
 # --- Update Operation ---
 
 async def update_note(db: Session, *, db_note: Note, note_in: NoteUpdate) -> Note:
-    """Update an existing note and its vector embedding if content changed."""
+    """Update an existing note, its summary if content changed, and its vector embedding."""
     update_data = note_in.model_dump(exclude_unset=True)
-    
-    # Check what's changing for vector store updates
     content_changed = 'content' in update_data and update_data['content'] != db_note.content
-    memory_type_changed = 'memory_type' in update_data and update_data['memory_type'] != db_note.memory_type
-    archive_status_changed = 'is_archived' in update_data and update_data['is_archived'] != db_note.is_archived
-    payload_changed = memory_type_changed or archive_status_changed
-    
-    logger.info(f"Updating note {db_note.id}, content_changed: {content_changed}, payload_changed: {payload_changed}")
-    
-    # Apply updates to the SQLAlchemy model
+    # Check if other direct fields or payload-relevant fields changed for Qdrant/DB update
+    other_fields_changed = any(k in update_data and getattr(db_note, k) != v for k, v in update_data.items() if k != 'content')
+
+
+    # Apply updates to the SQLAlchemy model attributes
     for field, value in update_data.items():
         setattr(db_note, field, value)
-    
-    # Commit the changes to the database
-    db.add(db_note)
-    db.commit()
-    db.refresh(db_note)
-    logger.info(f"Updated note {db_note.id} in database")
-    
-    # Special debug log for semantic notes
-    if db_note.memory_type == MemoryTypeEnum.semantic:
-        logger.info(f"Note {db_note.id} is semantic type after update")
-    
-    # Small delay to ensure transaction visibility
-    time.sleep(0.1)
-    
-    # Update the vector store as needed
-    if content_changed:
-        # If content changed, regenerate embedding and upsert
+
+
+    # --- Generate and SAVE new Summary if content changed ---
+    new_summary_generated = False
+    if content_changed and db_note.content:
+        print(f"DEBUG crud_note: Content changed for note {db_note.id}. Attempting summary regeneration.")
         try:
-            logger.debug(f"Regenerating embedding for updated note {db_note.id}")
-            new_embedding = await get_embedding(db_note.content)
-            
-            if new_embedding:
-                logger.info(f"Generated new embedding for note {db_note.id}, dimensions: {len(new_embedding)}")
-                await _upsert_vector(db_note, new_embedding)
+            summary_text = await generate_note_summary(db_note.content)
+            if summary_text:
+                db_note.summary = summary_text
+                new_summary_generated = True
+                print(f"Generated new summary for updated note {db_note.id}: '{summary_text[:50]}...'")
             else:
-                logger.warning(f"Failed to generate new embedding for note {db_note.id}")
-                # If payload also changed, still try to update it
-                if payload_changed:
-                    await _update_vector_payload(db_note)
-        except Exception as e:
-            logger.error(f"Error updating vector for note {db_note.id}: {e}", exc_info=True)
-    
-    elif payload_changed:
-        # If only metadata changed, just update the payload
+                print(f"Failed to generate new summary for updated note {db_note.id}.")
+        except Exception as sum_e:
+            print(f"ERROR during summary generation for updated note {db_note.id}: {sum_e}")
+    # ----------------------------------------------------
+
+    # Commit if any attribute changed (content, type, archive status, or new summary)
+    if content_changed or other_fields_changed or new_summary_generated:
+        db.add(db_note) # Ensure it's in the session if it was detached or attributes changed
+        db.commit()
+        db.refresh(db_note)
+
+    # --- Update Embedding/Payload in Qdrant ---
+    # Logic to update Qdrant if content changed (regenerate embedding) or payload fields changed
+    payload_fields_for_qdrant_changed = any(k in update_data for k in ['memory_type', 'is_archived'])
+    # If summary is part of Qdrant payload and it changed, that's also a payload change.
+    # Let's assume for now summary is not in Qdrant payload directly.
+
+    if content_changed or payload_fields_for_qdrant_changed:
         try:
-            await _update_vector_payload(db_note)
+            qdrant_client = get_qdrant_client()
+            new_embedding = None
+            if content_changed:
+                new_embedding = await get_embedding(db_note.content)
+
+            current_payload_for_qdrant = {
+                "memory_type": db_note.memory_type.value,
+                "is_archived": db_note.is_archived,
+                "ai_suggested_type": db_note.ai_suggested_memory_type.value if db_note.ai_suggested_memory_type else None
+            }
+
+            if new_embedding: # If content changed and embedding was successful
+                qdrant_client.upsert(
+                    collection_name=settings.QDRANT_COLLECTION_NAME,
+                    points=[qdrant_models.PointStruct(id=str(db_note.id), vector=new_embedding, payload=current_payload_for_qdrant)],
+                    wait=True
+                )
+                print(f"Upserted vector & payload for updated note {db_note.id} into Qdrant.")
+            elif payload_fields_for_qdrant_changed: # Content didn't change (or embedding failed), but other payload fields did
+                qdrant_client.set_payload(
+                    collection_name=settings.QDRANT_COLLECTION_NAME,
+                    payload=current_payload_for_qdrant, # Send the full current payload
+                    points=[str(db_note.id)],
+                    wait=True
+                )
+                print(f"Updated Qdrant payload only for note {db_note.id} (content unchanged or embedding failed).")
+            elif content_changed and not new_embedding:
+                print(f"Warning: Content changed but failed to generate embedding for updated note {db_note.id}. Qdrant vector not updated.")
+
         except Exception as e:
-            logger.error(f"Error updating vector payload for note {db_note.id}: {e}", exc_info=True)
-    
+            print(f"ERROR: Failed to update Qdrant for note {db_note.id}: {e}")
+    # ---------------------------------------
     return db_note
 
 # --- Archive / Unarchive ---

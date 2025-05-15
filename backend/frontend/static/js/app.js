@@ -49,7 +49,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const aiSuggestionReasoningElement = document.getElementById('ai-suggestion-reasoning');
     const applyAiSuggestionLink = document.getElementById('apply-ai-suggestion-link');
     const editFormAiSuggestionElement = document.getElementById('edit-form-ai-suggestion');
-
+    const noteSummaryDisplayElement = document.getElementById('note-summary-display');
 
     let currentNote = null;
     let notesCache = [];
@@ -142,6 +142,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
+
         archiveNoteBtn.textContent = note.is_archived ? 'Unarchive' : 'Archive';
         if(archiveNoteBtn) archiveNoteBtn.dataset.noteId = note.id;
         if(archiveNoteBtn) archiveNoteBtn.disabled = false;
@@ -162,6 +163,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
         fetchAndDisplayLinks(note.id);
         highlightSelectedNote(note.id);
+
+        // --- Display AI Generated Summary ---
+        if (noteSummaryDisplayElement) {
+            if (note.summary) {
+                noteSummaryDisplayElement.textContent = note.summary;
+                noteSummaryDisplayElement.classList.remove('hidden'); // Assuming .hidden might be used
+            } else {
+                noteSummaryDisplayElement.textContent = 'No summary generated.'; // Or hide it
+                // noteSummaryDisplayElement.classList.add('hidden');
+            }
+        } else {
+            console.error("displayNoteDetail: noteSummaryDisplayElement not found!");
+        }
+        // --- End Display Summary ---
+
     }
 
     function displayLinks(listElement, links) {

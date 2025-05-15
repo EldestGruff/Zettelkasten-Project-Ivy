@@ -1,2 +1,3 @@
 from .embedding import get_embedding, close_ollama_client
 from .ai_categorization import suggest_memory_type
+from .ai_summarization import generate_note_summary

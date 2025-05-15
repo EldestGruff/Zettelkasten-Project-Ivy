@@ -1,76 +1,68 @@
 # backend/app/models/note.py
 import uuid
 from datetime import datetime
-from typing import List, Optional # Need Optional for nullable relationships if lazy loading
+from typing import List, Optional
 
 from sqlalchemy import Column, String, Text, Boolean, DateTime, ForeignKey, Enum, Uuid
 from sqlalchemy.orm import relationship, Mapped, mapped_column
-from sqlalchemy.sql import func # For default timestamps
+from sqlalchemy.sql import func
 
 from .base import Base
-from .enums import MemoryTypeEnum
-# We'll have circular dependencies if we import Tag and Link directly here for types
-# Use forward references (strings) or handle type hints carefully later if needed.
+from .enums import MemoryTypeEnum # Make sure this is your Python Enum
 
 class Note(Base):
-    __tablename__ = "notes" # Explicitly defining table name
+    __tablename__ = "notes"
 
-    # Use Mapped and mapped_column for modern SQLAlchemy type hinting
-    # Use uuid.UUID for the Python type hint
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     content: Mapped[str] = mapped_column(Text, nullable=False)
-
-    # Use the Python enum directly, SQLAlchemy handles mapping to PG Enum
     memory_type: Mapped[MemoryTypeEnum] = mapped_column(
-        Enum(MemoryTypeEnum, name="memory_type_enum", create_type=True),
+        Enum(MemoryTypeEnum, name="memory_type_enum", create_type=True), # This created the type initially
         nullable=False,
         default=MemoryTypeEnum.uncategorized,
-        index=True # Matches index created in SQL
+        index=True
     )
-
     is_archived: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False, index=True # Matches index
+        Boolean, nullable=False, default=False, index=True
     )
 
-    # Use server_default for database-level default timestamps
+    # --- NEW: Columns for storing AI's last suggestion ---
+    ai_suggested_memory_type: Mapped[Optional[MemoryTypeEnum]] = mapped_column(
+        Enum(MemoryTypeEnum, name="memory_type_enum", create_type=False), # Use existing enum
+        nullable=True,
+        index=True # Optional: index if you might query by it
+    )
+    ai_suggestion_reasoning: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # ------------------------------------------------------
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
-    # Database trigger handles updates, but good practice to set onupdate as well
-    # Note: func.now() might capture transaction start time, CURRENT_TIMESTAMP captures statement time
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )
 
     # --- Relationships ---
-    # Many-to-Many relationship with Tag via NoteTag association object/table
-    # `back_populates` links this side of the relationship to the corresponding attribute on the Tag model
-    # `cascade` defines what happens when a Note is deleted/modified (matches ON DELETE CASCADE)
     tags: Mapped[List["Tag"]] = relationship(
-        "Tag", # Forward reference using string
-        secondary="note_tags", # Name of the association table
+        "Tag",
+        secondary="note_tags",
         back_populates="notes",
-        cascade="all, delete" # Matches SQL ON DELETE CASCADE behavior
+        cascade="all, delete"
     )
-
-    # One-to-Many relationship for links originating *from* this note
     source_links: Mapped[List["Link"]] = relationship(
         "Link",
-        foreign_keys="Link.source_note_id", # Specify join condition explicitly
+        foreign_keys="Link.source_note_id",
         back_populates="source_note",
         cascade="all, delete-orphan",
-        lazy="selectin" # Example loading strategy (optional)
+        lazy="selectin"
     )
-
-    # One-to-Many relationship for links pointing *to* this note
     target_links: Mapped[List["Link"]] = relationship(
         "Link",
-        foreign_keys="Link.target_note_id", # Specify join condition explicitly
+        foreign_keys="Link.target_note_id",
         back_populates="target_note",
         cascade="all, delete-orphan",
-        lazy="selectin" # Example loading strategy (optional)
+        lazy="selectin"
     )
 
     def __repr__(self):

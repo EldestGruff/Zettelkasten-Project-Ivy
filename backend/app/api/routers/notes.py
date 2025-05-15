@@ -28,36 +28,26 @@ router = APIRouter(
 @router.post("/", response_model=NoteRead, status_code=status.HTTP_201_CREATED)
 async def create_note_endpoint(note_in: NoteCreate, db: DbSession):
     """
-    Create a new note.
-    Includes an AI suggestion for memory type in the response if successful.
+    Create a new note. AI suggestion is retrieved and stored during CRUD.
+    The NoteRead response model will automatically include the ai_suggestion dict.
     """
     try:
-        # Create the note in PostgreSQL first
+        # crud.note.create_note now handles getting suggestion and saving it to DB.
+        # The returned created_note_db object will have the ai_suggestion fields populated.
         created_note_db = await crud.note.create_note(db=db, note_in=note_in)
-        # Note: crud.note.create_note now also handles Qdrant upsert
 
-        # --- Get AI suggestion for memory type ---
-        ai_suggestion_dict: Optional[Dict[str, str]] = None # Initialize
-        if created_note_db.content: # Only attempt categorization if there's content
-            try:
-                ai_suggestion_dict = await suggest_memory_type(created_note_db.content)
-                if ai_suggestion_dict:
-                    print(f"AI Suggestion for note {created_note_db.id}: {ai_suggestion_dict}")
-                else:
-                    print(f"No AI suggestion returned for note {created_note_db.id}.")
-            except Exception as ai_e:
-                # Log the error but don't let AI failure block note creation response
-                print(f"ERROR during AI categorization for note {created_note_db.id}: {ai_e}")
-        # ----------------------------------------
+        # Pydantic's NoteRead schema with from_attributes=True and @computed_field
+        # will now automatically construct the 'ai_suggestion' dictionary for the response
+        # from created_note_db.ai_suggested_memory_type and created_note_db.ai_suggestion_reasoning.
+        return created_note_db # Directly return the SQLAlchemy model instance
 
-        # Prepare the response using NoteRead schema.
-        # Pydantic will automatically try to populate fields from created_note_db.
-        # We need to manually add the ai_suggestion if it exists.
-        response_data = NoteRead.model_validate(created_note_db) # Convert DB model to Pydantic model
-        if ai_suggestion_dict:
-            response_data.ai_suggestion = ai_suggestion_dict
-
-        return response_data
+    except Exception as e:
+        # db.rollback() # CRUD should handle its own rollback on error before this
+        print(f"ERROR creating note in endpoint: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred while creating the note.",
+        )
 
     except Exception as e:
         db.rollback() # Rollback if main DB op failed

@@ -1,5 +1,6 @@
 # backend/app/crud/__init__.py
 from .crud_tag import get_tag, get_tag_by_name, get_tags, create_tag, update_tag, remove_tag, search_tags_by_name
+from .crud_ai_feedback import log_categorization_feedback
 from .crud_note import ( # Add Note CRUD functions
     get_note,
     get_note_including_archived,
@@ -24,5 +25,6 @@ from .crud_link import ( # Add Link CRUD functions
 from . import crud_tag as tag
 from . import crud_note as note # Add note module
 from . import crud_link as link
+from . import crud_ai_feedback as ai_feedback
 
 # Import others as needed
