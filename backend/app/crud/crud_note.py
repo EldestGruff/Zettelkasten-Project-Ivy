@@ -4,7 +4,7 @@ import time
 import logging
 from typing import List, Optional, Dict, Any, Union
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import select, update, delete
 from qdrant_client import QdrantClient, models as qdrant_models
 from app.db.vector_store import get_qdrant_client
@@ -25,8 +25,18 @@ logger = logging.getLogger(__name__)
 # --- Read Operations ---
 
 def get_note(db: Session, note_id: uuid.UUID) -> Optional[Note]:
-    """Get a single active (non-archived) note by its UUID."""
-    statement = select(Note).where(Note.id == note_id, Note.is_archived == False)
+    """Get a single active (non-archived) note by its UUID, eagerly loading tags."""
+    statement = (
+        select(Note)
+        .where(Note.id == note_id, Note.is_archived == False)
+        .options(
+            selectinload(Note.tags), # Eagerly load tags
+            # selectinload(Note.source_links), # Optionally load full source_links
+            # selectinload(Note.target_links)  # Optionally load full target_links
+            # Or, if just counts are needed, we might use column_property or hybrid_property
+            # on the model, but for now, loading full links is simpler if needed by detail view.
+        )
+    )
     result = db.execute(statement).scalar_one_or_none()
     return result
 
@@ -39,13 +49,18 @@ def get_notes(
 ) -> List[Note]:
     """
     Get a list of notes, optionally including archived ones.
-    Sorted by most recently updated.
+    Sorted by most recently updated. Eagerly loads tags for potential future use.
     """
     statement = select(Note)
     if not include_archived:
         statement = statement.where(Note.is_archived == False)
 
-    statement = statement.order_by(Note.updated_at.desc()).offset(skip).limit(limit)
+    statement = (
+        statement.options(selectinload(Note.tags)) # Eager load tags for all notes in the list
+        .order_by(Note.updated_at.desc())
+        .offset(skip)
+        .limit(limit)
+    )
     result = db.execute(statement).scalars().all()
     return result
 
@@ -155,12 +170,14 @@ async def create_note(db: Session, *, note_in: NoteCreate) -> Note:
     db.refresh(db_note)
 
     # --- Get AI suggestion & SAVE to DB ---
+    ai_suggestion_saved = False
     if db_note.content: # Only if content exists
         try:
             ai_suggestion_dict = await suggest_memory_type(db_note.content)
             if ai_suggestion_dict:
                 db_note.ai_suggested_memory_type = MemoryTypeEnum[ai_suggestion_dict["suggested_type"]]
                 db_note.ai_suggestion_reasoning = ai_suggestion_dict.get("reasoning")
+                ai_suggestion_saved = True
                 # No separate commit yet, will bundle with summary or do at end
             else:
                 print(f"No AI suggestion for new note {db_note.id}.")
@@ -170,11 +187,13 @@ async def create_note(db: Session, *, note_in: NoteCreate) -> Note:
     print(f"DEBUG crud_note: Attempting to generate summary for note {db_note.id}. Content exists: {bool(db_note.content)}")
 
     # --- Generate and SAVE Summary ---
+    summary_saved = False
     if db_note.content: # Only if content exists
         try:
             summary_text = await generate_note_summary(db_note.content)
             if summary_text:
                 db_note.summary = summary_text
+                summary_saved = True
                 print(f"Generated summary for new note {db_note.id}: '{summary_text[:50]}...'")
             else:
                 print(f"Failed to generate summary for new note {db_note.id}.")
@@ -183,7 +202,7 @@ async def create_note(db: Session, *, note_in: NoteCreate) -> Note:
     # -------------------------------
 
     # --- Commit suggestion and summary (if any) ---
-    if db_note.ai_suggested_memory_type or db_note.summary:
+    if db_note.ai_suggested_memory_type or db_note.summary or summary_saved or ai_suggestion_saved:
         db.add(db_note) # Ensure it's in session if changes were made
         db.commit()
         db.refresh(db_note)

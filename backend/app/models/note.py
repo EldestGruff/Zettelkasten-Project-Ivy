@@ -17,6 +17,7 @@ class Note(Base):
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     memory_type: Mapped[MemoryTypeEnum] = mapped_column(
         Enum(MemoryTypeEnum, name="memory_type_enum", create_type=True), # This created the type initially
         nullable=False,

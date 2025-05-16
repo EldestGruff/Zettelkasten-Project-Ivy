@@ -27,13 +27,14 @@ class NoteUpdate(BaseModel):
 class NoteRead(NoteBase):
     id: uuid.UUID
     is_archived: bool
-    summary: Optional[str] = None # <-- ADD SUMMARY FIELD HERE
+    summary: Optional[str] = None
     created_at: datetime
     updated_at: datetime
     tags: List[TagRead] = []
     ai_suggested_memory_type: Optional[MemoryTypeEnum] = None
     ai_suggestion_reasoning: Optional[str] = None
-
+    model_config = ConfigDict(from_attributes=True)
+    
     # --- Construct the ai_suggestion dict for the API response ---
     @computed_field
     @property
