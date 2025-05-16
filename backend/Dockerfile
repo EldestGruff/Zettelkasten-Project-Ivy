@@ -12,6 +12,21 @@ ENV PYTHONUNBUFFERED 1
 # Set the working directory inside the container
 WORKDIR /app
 
+# Make ARG values available at build time (can be passed by docker-compose build --build-arg)
+ARG POSTGRES_USER_ARG=${POSTGRES_USER}
+ARG POSTGRES_PASSWORD_ARG=${POSTGRES_PASSWORD}
+ARG POSTGRES_DB_ARG=${POSTGRES_DB}
+ARG POSTGRES_SERVER_ARG=postgres # Default service name
+ARG POSTGRES_PORT_ARG=5432
+
+# Set ENV vars that will be available at runtime in the container
+# These can be overridden by docker-compose 'environment' section for the main CMD
+ENV POSTGRES_USER=${POSTGRES_USER_ARG}
+ENV POSTGRES_PASSWORD=${POSTGRES_PASSWORD_ARG}
+ENV POSTGRES_DB=${POSTGRES_DB_ARG}
+ENV POSTGRES_SERVER=${POSTGRES_SERVER_ARG}
+ENV POSTGRES_PORT=${POSTGRES_PORT_ARG}
+
 # Install system dependencies if needed (e.g., for psycopg build if not using binary)
 # RUN apt-get update && apt-get install -y --no-install-recommends gcc libpq-dev && rm -rf /var/lib/apt/lists/*
 # (We installed psycopg[binary], so system deps are likely not needed for it)

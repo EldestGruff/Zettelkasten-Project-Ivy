@@ -3,9 +3,9 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: zettelkasten-postgres # Changed from zettelkasten-postgres-1 for consistency
+    container_name: zettelkasten-postgres
     restart: unless-stopped
-    env_file: .env # Load .env from project root
+    env_file: .env # Loads from project root .env
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -15,7 +15,8 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432" # Map to host's localhost
+      # Map to Ivy's localhost only, for direct DB tools if needed
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     networks:
       - zettelkasten_net
     healthcheck:
@@ -31,14 +32,17 @@ services:
 
   qdrant:
     image: qdrant/qdrant:latest
-    container_name: zettelkasten-qdrant # Changed from zettelkasten-qdrant-1
+    container_name: zettelkasten-qdrant
     restart: unless-stopped
     environment:
       TZ: ${TZ:-Etc/UTC}
+      # QDRANT_LOG_LEVEL: DEBUG # Uncomment for more detailed Qdrant logs if needed
     volumes:
       - qdrant_data:/qdrant/storage
     ports:
-      - "127.0.0.1:${QDRANT_PORT:-6333}:6333" # Map to host's localhost
+      # Map to Ivy's localhost only, for direct Qdrant tools if needed
+      - "127.0.0.1:${QDRANT_PORT:-6333}:6333"
+      # - "127.0.0.1:6334:6334" # gRPC port if needed
     networks:
       - zettelkasten_net
     logging:
@@ -47,39 +51,70 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  # Ollama service is removed as it's running natively on the host
+  ollama:
+    image: ollama/ollama:latest
+    container_name: zettelkasten-ollama
+    restart: unless-stopped
+    ports:
+      # Map to Ivy's localhost only, for direct Ollama CLI/API from host if needed
+      - "127.0.0.1:11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama # Persist downloaded models
+    deploy: # GPU passthrough for NVIDIA on Linux (Ivy)
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all # Use all available NVIDIA GPUs
+              capabilities: [gpu]
+    pull_policy: always # Good for keeping Ollama image updated
+    networks:
+      - zettelkasten_net
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m" # Allow slightly larger logs for Ollama
+        max-file: "5"
 
   backend:
     container_name: zettelkasten-backend
     build:
-      context: ./backend
+      context: ./backend # Path to your backend directory containing Dockerfile
+      args: # These pass to Dockerfile ARGs
+        POSTGRES_USER_ARG: ${POSTGRES_USER}
+        POSTGRES_PASSWORD_ARG: ${POSTGRES_PASSWORD}
+        POSTGRES_DB_ARG: ${POSTGRES_DB}
       dockerfile: Dockerfile
     restart: unless-stopped
-    env_file: .env # Load .env from project root
+    env_file: .env # Loads from project root .env
     environment:
-      # For connections from backend container to other services:
-      POSTGRES_SERVER: postgres         # Service name for Postgres
-      QDRANT_HOST: qdrant             # Service name for Qdrant
+      # --- For container-to-container communication using service names ---
       DATABASE_URL: "postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}"
-      # --- For backend container to connect to NATIVE Ollama on HOST ---
-      OLLAMA_API_BASE_URL: http://host.docker.internal:11434
-      # POSTGRES_USER: ${POSTGRES_USER}
-      # POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      # POSTGRES_DB: ${POSTGRES_DB}
-      
-      EMBEDDING_MODEL_NAME: ${EMBEDDING_MODEL_NAME}
-      CATEGORIZATION_MODEL_NAME: ${CATEGORIZATION_MODEL_NAME}
-      QDRANT_COLLECTION_NAME: ${QDRANT_COLLECTION_NAME}
+      POSTGRES_SERVER: postgres
+      QDRANT_HOST: qdrant
+      OLLAMA_API_BASE_URL: http://ollama:11434
+      # Variables below are loaded from .env by 'env_file' but listed here for clarity
+      # Their values will be used by app.core.config.Settings to construct DATABASE_URL etc.
+      # If not in .env, defaults from Settings class will be used unless overridden here.
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_PORT: 5432 # Internal port, not host mapped from backend's perspective
+      # QDRANT_PORT: 6333   # Internal port
+      EMBEDDING_MODEL_NAME: ${EMBEDDING_MODEL_NAME:-nomic-embed-text} # Default if not in .env
+      CATEGORIZATION_MODEL_NAME: ${CATEGORIZATION_MODEL_NAME:-mistral:7b-instruct-q4_K_M} # Default
+      QDRANT_COLLECTION_NAME: ${QDRANT_COLLECTION_NAME:-notes_embeddings} # Default
       TZ: ${TZ:-Etc/UTC}
     ports:
-      # Map backend's port 8000 to host's port 8000 (accessible via localhost:8000 on Mac)
-      - "127.0.0.1:8000:8000"
+      # Map backend's internal port 8000 to port 8000 on Ivy host, accessible via Ivy's IP
+      - "8000:8000"
     depends_on:
       postgres:
         condition: service_healthy
       qdrant:
         condition: service_started
-      # No dependency on Ollama service as it's external now
+      ollama:
+        condition: service_started
     networks:
       - zettelkasten_net
     logging:
@@ -91,7 +126,7 @@ services:
 volumes:
   postgres_data:
   qdrant_data:
-  # ollama_data: # Not needed if Ollama is native
+  ollama_data:
 
 networks:
   zettelkasten_net:

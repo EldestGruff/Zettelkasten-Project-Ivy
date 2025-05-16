@@ -17,17 +17,22 @@ config = context.config
 DB_URL_ENV_VAR = "DATABASE_URL" # The env var name we use in docker-compose
 
 def get_url():
-    # Prioritize the environment variable
-    url = os.getenv(DB_URL_ENV_VAR)
-    if url:
-        print(f"DEBUG env.py: Using database URL from environment variable {DB_URL_ENV_VAR}: {url[:url.find('@') if '@' in url else 20]}...") # Mask password
-        return url
-    # Fallback to alembic.ini (for local direct alembic runs if needed)
-    url_from_ini = config.get_main_option("sqlalchemy.url")
-    print(f"DEBUG env.py: Using database URL from alembic.ini: {url_from_ini[:url_from_ini.find('@') if '@' in url_from_ini else 20]}...") # Mask password
-    return url_from_ini
-# -----------------------------
+    # Construct URL from individual environment variables
+    # These should be set in the container by Dockerfile ENV or docker-compose environment
+    user = os.getenv("POSTGRES_USER", "default_user_if_not_set")
+    password = os.getenv("POSTGRES_PASSWORD", "default_password_if_not_set")
+    server = os.getenv("POSTGRES_SERVER", "postgres") # Default to service name
+    port = os.getenv("POSTGRES_PORT", "5432")
+    db = os.getenv("POSTGRES_DB", "default_db_if_not_set")
 
+    if not all([user, password, server, port, db]):
+        # Fallback to alembic.ini if critical parts are missing from env
+        print("DEBUG env.py: One or more Postgres ENV VARS missing, falling back to alembic.ini for URL")
+        return config.get_main_option("sqlalchemy.url")
+
+    url = f"postgresql+psycopg://{user}:{password}@{server}:{port}/{db}"
+    print(f"DEBUG env.py: Constructed database URL from ENV VARS: postgresql+psycopg://{user}:***@{server}:{port}/{db}")
+    return url
 
 # Interpret the config file for Python logging.
 # This line needs to be adapted to your project's logger configuration.
